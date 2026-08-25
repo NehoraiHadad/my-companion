@@ -1,0 +1,26 @@
+node_modules/
+dist/
+android-dist/
+android-native/build/
+deliverables/
+.nitron/
+test-results/
+playwright-report/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+local.properties
+
+# Generated packages and local QA captures
+*.apk
+design-qa-*.png
+
+# Editor / OS files
+.DS_Store
+.idea/
+.vscode/
+*.log

@@ -1,0 +1,20 @@
+{
+  "name": "החבר שלי",
+  "packageId": "app.pocketcompanion.local",
+  "version": "5.3.0",
+  "entry": "android-dist/index.html",
+  "orientation": "portrait",
+  "statusBar": true,
+  "permissions": ["INTERNET", "ACCESS_NETWORK_STATE", "CAMERA", "POST_NOTIFICATIONS", "VIBRATE"],
+  "icon": "./public/assets/companion/app-icon-v4.png",
+  "network": {
+    "cleartext": false
+  },
+  "webview": {
+    "backButton": "history",
+    "clearCacheOnStart": false
+  },
+  "splashScreen": {
+    "backgroundColor": "#071226"
+  }
+}
