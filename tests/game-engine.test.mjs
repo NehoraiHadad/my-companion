@@ -35,6 +35,7 @@ test("a fresh install has no forced name, animal, or completed onboarding", () =
   assert.equal(defaultState.name, "");
   assert.equal(defaultState.characterKind, "");
   assert.equal(defaultState.photo, undefined);
+  assert.deepEqual(defaultState.aiRooms, {});
 });
 
 test("care score visibly declines with elapsed time even before a crisis", () => {

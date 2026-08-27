@@ -352,6 +352,8 @@ select.text-field { appearance: auto; }
   .stats-grid { grid-template-columns: repeat(2,1fr); }
   .room-scene { height: 245px; }
   .moving-character { width: 72%; }
+  .decor-poster,.decor-lamp,.decor-plant,.decor-radio,.decor-trophy { width: 44px; height: 44px; }
+  .decor-rug { bottom: -13px; width: 94px; height: 94px; margin-left: -47px; }
   .game-card-head { grid-template-columns: 36px minmax(0,1fr) auto; gap: 7px; padding: 11px; }
   .game-card-head>span { width: 36px; height: 36px; }
 }
@@ -559,19 +561,22 @@ html.native-apk .mobile-app-viewport { background: #071123; }
 }
 
 /* v5.2: the room fills up, the streak pays back and the arena keeps a tell. */
-.room-decor {
-  position: absolute; z-index: 3; display: grid; width: 30px; height: 30px; place-items: center;
-  border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--accent);
-  box-shadow: 0 6px 16px rgba(0,0,0,.26),0 0 14px color-mix(in srgb,var(--accent) 22%,transparent);
-  backdrop-filter: blur(10px); pointer-events: none;
-}
-.room-decor svg { width: 15px; height: 15px; }
-.decor-lamp { top: 4px; right: 2px; }
-.decor-poster { top: 4px; left: 2px; }
-.decor-radio { top: 46%; left: 0; }
-.decor-plant { bottom: 38px; left: 2px; }
-.decor-rug { bottom: 2px; left: 2px; }
-.decor-trophy { bottom: 60px; right: 2px; }
+.room-decor { position: absolute; z-index: 3; display: block; border: 0; background: none; filter: drop-shadow(0 7px 9px rgba(0,0,0,.34)); pointer-events: none; }
+.room-decor svg,.room-decor img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.decor-poster { top: 20%; right: 7%; width: 56px; height: 56px; }
+.decor-lamp { bottom: 2px; left: 5%; width: 52px; height: 52px; }
+.decor-plant { right: 4%; bottom: 0; width: 50px; height: 50px; }
+.decor-radio { top: 43%; left: 1%; width: 50px; height: 50px; }
+.decor-trophy { top: 43%; right: 1%; width: 48px; height: 48px; }
+.decor-rug { bottom: -15px; left: 50%; z-index: 2; width: 110px; height: 110px; margin-left: -55px; filter: drop-shadow(0 4px 7px rgba(0,0,0,.26)); }
+.theme-classic .room-decor { filter: grayscale(.8) sepia(.4) hue-rotate(46deg) contrast(1.15) drop-shadow(0 5px 6px rgba(0,0,0,.3)); }
+
+.room-bake-status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; padding: 9px 10px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.03); font-size: 9px; }
+.room-bake-status span { display: flex; gap: 5px; align-items: center; color: white; font-weight: 700; }
+.room-bake-status svg { width: 12px; height: 12px; color: var(--accent); }
+.room-bake-status strong { color: var(--muted); font-weight: 600; }
+.room-bake-status em { padding: 3px 8px; border-radius: 999px; background: rgba(255,178,88,.14); color: #ffd69e; font-style: normal; font-weight: 800; }
+.room-bake-status em.ready { background: rgba(84,217,153,.13); color: #8be8bb; }
 
 .milestone-strip { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 7px; }
 .milestone-strip>button { display: flex; min-width: 0; flex-direction: column; gap: 4px; align-items: center; padding: 10px 4px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.045); color: white; }

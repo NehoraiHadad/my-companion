@@ -46,6 +46,7 @@ export type GameState = {
   animationSlots: Partial<Record<CompanionMotion, boolean>>;
   aiCharacter: boolean;
   characterVariants: Partial<Record<ThemeId, boolean>>;
+  aiRooms: Partial<Record<ThemeId, string>>;
   notificationsEnabled: boolean;
   guideSeen: boolean;
   decorations: Partial<Record<DecorKey, boolean>>;
@@ -86,7 +87,7 @@ export const defaultState: GameState = {
   inventory: { apple: 3, meal: 1, soap: 2, medicine: 1, ball: 1 },
   streak: 1, bestStreak: 1, lastVisitKey: localDayKey(), nextMessAt: Date.now() + 5.5 * HOUR,
   sleepingUntil: 0, awayMinutes: 0, memories: [], visualRevision: 1, animationSlots: {},
-  aiCharacter: false, characterVariants: {},
+  aiCharacter: false, characterVariants: {}, aiRooms: {},
   notificationsEnabled: false, guideSeen: false,
   decorations: {}, claimedMilestones: [],
 };
