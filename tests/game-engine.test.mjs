@@ -5,7 +5,10 @@ import {
   HOUR,
   absenceMessage,
   applyElapsed,
+  buyDecoration,
+  claimStreakMilestone,
   currentStage,
+  decorMeta,
   defaultState,
   localDayKey,
   nextStage,
@@ -196,4 +199,56 @@ test("a seven-day active playthrough reaches every evolution stage", () => {
   assert.deepEqual([...reached], ["baby", "kid", "teen", "grown"]);
   assert.ok(game.xp >= 850);
   assert.equal(game.streak, 7);
+});
+
+test("buying a decoration costs coins once and rewards the room upgrade", () => {
+  const now = new Date(2026, 7, 24, 10).getTime();
+  const base = stateAt(now, { coins: 300, xp: 40 });
+  const bought = buyDecoration(base, "rug");
+  assert.equal(bought.coins, 300 - decorMeta.rug.price);
+  assert.equal(bought.decorations.rug, true);
+  assert.equal(bought.xp, 55);
+  assert.equal(buyDecoration(bought, "rug"), bought);
+  assert.equal(buyDecoration(stateAt(now, { coins: 30 }), "trophy").coins, 30);
+  assert.equal(buyDecoration(stateAt(now, { coins: 30 }), "trophy").decorations.trophy, undefined);
+});
+
+test("the daily coin grant grows with a furnished room", () => {
+  const yesterday = new Date(2026, 7, 23, 20).getTime();
+  const today = new Date(2026, 7, 24, 8).getTime();
+  const furnished = stateAt(yesterday, { coins: 50, decorations: { lamp: true, poster: true, rug: true } });
+  assert.equal(applyElapsed(furnished, today).coins, 66);
+});
+
+test("streak milestones pay out once and only when reached", () => {
+  const now = new Date(2026, 7, 24, 10).getTime();
+  const base = stateAt(now, { coins: 20, xp: 100, streak: 7, bestStreak: 7 });
+  const claimed = claimStreakMilestone(base, 7);
+  assert.equal(claimed.coins, 80);
+  assert.equal(claimed.xp, 160);
+  assert.deepEqual(claimed.claimedMilestones, [7]);
+  assert.equal(claimStreakMilestone(base, 14), base);
+  assert.equal(claimStreakMilestone(claimed, 7), claimed);
+  assert.equal(claimStreakMilestone(base, 9), base);
+});
+
+test("sickness deepens awake decay of energy and mood only", () => {
+  const now = new Date(2026, 7, 24, 10).getTime();
+  const healthy = applyElapsed(stateAt(now, { hygiene: 90 }), now + 6 * HOUR);
+  const ill = applyElapsed(stateAt(now, { hygiene: 90, sick: true }), now + 6 * HOUR);
+  assert.ok(ill.energy < healthy.energy);
+  assert.ok(ill.mood < healthy.mood);
+  assert.equal(ill.fullness, healthy.fullness);
+  assert.equal(ill.hygiene, healthy.hygiene);
+});
+
+test("naps follow the day and night rhythm", () => {
+  const night = new Date(2026, 7, 24, 23).getTime();
+  const day = new Date(2026, 7, 24, 12).getTime();
+  const nightNap = performCareAction(stateAt(night, { energy: 40 }), "sleep", night);
+  const dayNap = performCareAction(stateAt(day, { energy: 40 }), "sleep", day);
+  assert.equal(nightNap.sleepingUntil, night + 60 * 60_000);
+  assert.equal(nightNap.energy, 50);
+  assert.equal(dayNap.sleepingUntil, day + 30 * 60_000);
+  assert.equal(dayNap.energy, 45);
 });

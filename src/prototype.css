@@ -557,3 +557,38 @@ html.native-apk .mobile-app-viewport { background: #071123; }
 @media (max-height: 760px) {
   .home-screen,.native-apk .home-screen { min-height: 0; }
 }
+
+/* v5.2: the room fills up, the streak pays back and the arena keeps a tell. */
+.room-decor {
+  position: absolute; z-index: 3; display: grid; width: 30px; height: 30px; place-items: center;
+  border: 1px solid var(--line); border-radius: 11px; background: var(--panel); color: var(--accent);
+  box-shadow: 0 6px 16px rgba(0,0,0,.26),0 0 14px color-mix(in srgb,var(--accent) 22%,transparent);
+  backdrop-filter: blur(10px); pointer-events: none;
+}
+.room-decor svg { width: 15px; height: 15px; }
+.decor-lamp { top: 4px; right: 2px; }
+.decor-poster { top: 4px; left: 2px; }
+.decor-radio { top: 46%; left: 0; }
+.decor-plant { bottom: 38px; left: 2px; }
+.decor-rug { bottom: 2px; left: 2px; }
+.decor-trophy { bottom: 60px; right: 2px; }
+
+.milestone-strip { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 7px; }
+.milestone-strip>button { display: flex; min-width: 0; flex-direction: column; gap: 4px; align-items: center; padding: 10px 4px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.045); color: white; }
+.milestone-strip>button:disabled { cursor: default; }
+.milestone-strip>button>span { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 11px; background: rgba(255,255,255,.07); color: var(--muted); }
+.milestone-strip>button>span svg { width: 14px; height: 14px; }
+.milestone-strip strong { font-size: 10px; }
+.milestone-strip em { color: var(--accent); font-size: 10px; font-style: normal; font-weight: 800; direction: ltr; }
+.milestone-strip small { color: var(--muted); font-size: 8px; direction: ltr; }
+.milestone-strip .ready { border-color: rgba(255,178,88,.35); background: rgba(255,178,88,.11); }
+.milestone-strip .ready>span { background: var(--accent); color: #172137; }
+.milestone-strip .claimed { opacity: .58; }
+
+.decor-list>button.owned:disabled { opacity: 1; border-color: rgba(255,178,88,.28); background: rgba(255,178,88,.08); }
+.decor-list>button.owned>span { background: var(--accent); color: #172137; }
+.decor-list .owned-tag { gap: 4px; color: #8be8bb; }
+.decor-list .owned-tag svg { width: 11px; }
+
+.guess-tell { display: grid; place-items: center; }
+.guess-tip { display: block; margin-top: 9px; color: var(--muted); font-size: 8px; line-height: 1.4; }
