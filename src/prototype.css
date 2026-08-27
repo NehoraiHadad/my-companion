@@ -176,7 +176,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline: 3px sol
 .quest-list .complete { border-color: rgba(255,178,88,.28); }
 .quest-list .complete>span { background: var(--accent); color: #172137; }
 .quest-list .claimed { opacity: .58; }
-.stats-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: 14px; }
+.stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-top: 14px; }
 .stats-grid>div { padding: 13px 6px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,255,255,.035); text-align: center; }
 .stats-grid strong { display: block; font-size: 17px; }
 .stats-grid span { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; }
@@ -349,6 +349,7 @@ select.text-field { appearance: auto; }
 }
 @media (max-width: 350px) {
   .need-chip span { display: none; }
+  .stats-grid { grid-template-columns: repeat(2,1fr); }
   .room-scene { height: 245px; }
   .moving-character { width: 72%; }
   .game-card-head { grid-template-columns: 36px minmax(0,1fr) auto; gap: 7px; padding: 11px; }

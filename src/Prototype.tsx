@@ -153,33 +153,36 @@ function loadState(): GameState {
       const v3 = JSON.parse(localStorage.getItem(V3_STORAGE_KEY) ?? "null") as Partial<GameState> | null;
       const v2 = JSON.parse(localStorage.getItem(V2_STORAGE_KEY) ?? "null") as Partial<GameState> | null;
       const legacy = v4 ?? v3 ?? v2 ?? JSON.parse(localStorage.getItem(OLD_STORAGE_KEY) ?? "null") as Partial<GameState> | null;
-      if (legacy) return applyElapsed({
-        ...defaultState,
-        onboarded: legacy.onboarded ?? false,
-        name: legacy.name === "לולי" ? "" : legacy.name || "",
-        theme: legacy.theme || "sunrise",
-        fullness: (legacy as any).hunger ?? legacy.fullness ?? 68,
-        energy: legacy.energy ?? 78,
-        hygiene: legacy.hygiene ?? 74,
-        mood: (legacy as any).joy ?? legacy.mood ?? 72,
-        xp: legacy.xp ?? 0,
-        coins: legacy.coins ?? 80,
-        actions: legacy.actions ?? 0,
-        personality: legacy.personality ?? defaultState.personality,
-        inventory: legacy.inventory ?? defaultState.inventory,
-        memories: legacy.memories ?? [],
-        photo: legacy.photo,
-        birthAt: legacy.birthAt ?? Date.now() - HOUR,
-        lastSeen: legacy.lastSeen ?? Date.now(),
-        characterKind: legacy.characterKind || "",
-        visualRevision: legacy.visualRevision ?? Date.now(),
-        animationSlots: legacy.animationSlots ?? {},
-        aiCharacter: legacy.aiCharacter ?? false,
-        characterVariants: legacy.characterVariants ?? {},
-        sourcePhoto: legacy.sourcePhoto ?? legacy.photo,
-        notificationsEnabled: false,
-        guideSeen: false,
-      });
+      if (legacy) {
+        const legacyName = legacy.name === "לולי" ? "" : legacy.name || "";
+        return applyElapsed({
+          ...defaultState,
+          onboarded: legacyName ? legacy.onboarded ?? false : false,
+          name: legacyName,
+          theme: legacy.theme || "sunrise",
+          fullness: (legacy as any).hunger ?? legacy.fullness ?? 68,
+          energy: legacy.energy ?? 78,
+          hygiene: legacy.hygiene ?? 74,
+          mood: (legacy as any).joy ?? legacy.mood ?? 72,
+          xp: legacy.xp ?? 0,
+          coins: legacy.coins ?? 80,
+          actions: legacy.actions ?? 0,
+          personality: legacy.personality ?? defaultState.personality,
+          inventory: legacy.inventory ?? defaultState.inventory,
+          memories: legacy.memories ?? [],
+          photo: legacy.photo,
+          birthAt: legacy.birthAt ?? Date.now() - HOUR,
+          lastSeen: legacy.lastSeen ?? Date.now(),
+          characterKind: legacy.characterKind || "",
+          visualRevision: legacy.visualRevision ?? Date.now(),
+          animationSlots: legacy.animationSlots ?? {},
+          aiCharacter: legacy.aiCharacter ?? false,
+          characterVariants: legacy.characterVariants ?? {},
+          sourcePhoto: legacy.sourcePhoto ?? legacy.photo,
+          notificationsEnabled: false,
+          guideSeen: false,
+        });
+      }
     }
   } catch { /* fall through */ }
   return { ...defaultState, birthAt: Date.now(), lastSeen: Date.now(), visualRevision: Date.now() };
@@ -279,8 +282,12 @@ export default function Prototype() {
   const [guessGame, setGuessGame] = useState({ active: false, round: 0, score: 0, answer: null as "left" | "right" | null, reveal: "" });
   const fileRef = useRef<HTMLInputElement | null>(null);
   const motionTimerRef = useRef<number | null>(null);
+  const starFinishedRef = useRef(false);
 
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...game, lastSeen: Date.now(), awayMinutes: 0 })); }, [game]);
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...game, lastSeen: Date.now(), awayMinutes: 0 })); }
+    catch { /* the game keeps running from memory even when the device refuses to store */ }
+  }, [game]);
   useEffect(() => { sessionStorage.setItem(AI_KEY, JSON.stringify(ai)); }, [ai]);
   useEffect(() => () => { if (motionTimerRef.current) window.clearTimeout(motionTimerRef.current); }, []);
   useEffect(() => { resetScroll(".app-screen .mobile-scroll"); }, [screen]);
@@ -364,13 +371,16 @@ export default function Prototype() {
   }, []);
   useEffect(() => {
     if (!starGame.active) return;
-    const tick = window.setInterval(() => setStarGame((current) => {
-      if (current.time <= 1) { finishStarGame(current.score); return { ...current, active: false, time: 0 }; }
-      return { ...current, time: current.time - 1 };
-    }), 1000);
+    const tick = window.setInterval(() => setStarGame((current) => current.time <= 1 ? { ...current, active: false, time: 0 } : { ...current, time: current.time - 1 }), 1000);
     const drop = window.setInterval(() => setStarGame((current) => current.active ? { ...current, target: Math.floor(Math.random() * 3), targetId: current.targetId + 1 } : current), 900);
     return () => { window.clearInterval(tick); window.clearInterval(drop); };
   }, [starGame.active]);
+  useEffect(() => {
+    if (starGame.active) { starFinishedRef.current = false; return; }
+    if (starGame.time !== 0 || starFinishedRef.current) return;
+    starFinishedRef.current = true;
+    finishStarGame(starGame.score);
+  }, [starGame.active, starGame.time, starGame.score]);
 
   const needs = useMemo(() => ({ fullness: game.fullness, energy: game.energy, hygiene: game.hygiene, mood: game.mood }), [game]);
   const lowestNeed = useMemo(() => (Object.entries(needs) as Array<[NeedKey, number]>).sort((a, b) => a[1] - b[1])[0], [needs]);
@@ -415,22 +425,24 @@ export default function Prototype() {
   };
 
   const performAction = (action: ActionKey) => {
-    setGame((current) => performCareAction(current, action));
-    if ((game.actions + 1) % 6 === 0) window.setTimeout(() => { setEventText(`${game.name} מצא 12 מטבעות מתחת לשטיח. לא שואלים שאלות.`); setOverlay("event"); showEffect("coin"); }, 400);
+    const next = performCareAction(game, action);
+    setGame(next);
+    const foundCoins = next.coins - game.coins >= 12;
+    if (foundCoins) window.setTimeout(() => { setEventText(`${game.name} מצא 12 מטבעות מתחת לשטיח. לא שואלים שאלות.`); setOverlay("event"); showEffect("coin"); }, 400);
     const kind = game.characterKind || "person";
     const lines = [...sharedReactions[action], ...kindReactions[kind][action]];
     say(lines[Math.floor(Math.random() * lines.length)]); showEffect(actionsMeta[action].effect);
     const nextMotion = action === "sleep" && game.sleeping ? "idle" : actionMotion[action];
     playMotion(nextMotion, 2600, nextMotion === "sleep");
-    if ((game.actions + 1) % 9 === 0) window.setTimeout(() => {
+    if (!foundCoins && next.actions % 9 === 0) window.setTimeout(() => {
       const reports = [
         `${game.name} פתח ועדת חקירה. המסקנה: צריך עוד חטיף.`,
         `דיווח מהחדר: הכול בשליטה, חוץ ממה שלא.`,
         `${game.name} ניסה להיות רציני במשך שבע שניות. כמעט הצליח.`,
       ];
-      setEventText(reports[(game.actions + 1) % reports.length]); setOverlay("event");
+      setEventText(reports[next.actions % reports.length]); setOverlay("event");
     }, 520);
-    if (aiStatus === "ready" && ai.autoEvents && (game.actions + 1) % 4 === 0) window.setTimeout(() => void askAi("ספר על מה שקרה אחרי פעולת הטיפול האחרונה"), 650);
+    if (aiStatus === "ready" && ai.autoEvents && next.actions % 4 === 0) window.setTimeout(() => void askAi("ספר על מה שקרה אחרי פעולת הטיפול האחרונה"), 650);
   };
 
   const useItem = (key: ItemKey) => {
@@ -455,7 +467,7 @@ export default function Prototype() {
 
   const finishStarGame = (score: number) => {
     const reward = Math.max(5, score * 3);
-    setGame((current) => ({ ...current, coins: current.coins + reward, xp: current.xp + score * 3, mood: clamp(current.mood + 12), questGame: 1, personality: { ...current.personality, curious: current.personality.curious + 2 } }));
+    setGame((current) => { const mood = clamp(current.mood + 12); return { ...current, coins: current.coins + reward, xp: current.xp + score * 3, mood, questGame: 1, questHappy: mood >= 85 ? 1 : current.questHappy, personality: { ...current.personality, curious: current.personality.curious + 2 } }; });
     setEventText(`תפסנו ${score} כוכבים וקיבלנו ${reward} מטבעות.`); setOverlay("event"); showEffect("coin");
   };
 
@@ -477,7 +489,7 @@ export default function Prototype() {
     window.setTimeout(() => {
       if (nextRound >= 5) {
         const reward = 10 + nextScore * 5;
-        setGame((current) => ({ ...current, coins: current.coins + reward, xp: current.xp + nextScore * 5, questGame: 1, mood: clamp(current.mood + 10), personality: { ...current.personality, comic: current.personality.comic + 2 } }));
+        setGame((current) => { const mood = clamp(current.mood + 10); return { ...current, coins: current.coins + reward, xp: current.xp + nextScore * 5, questGame: 1, mood, questHappy: mood >= 85 ? 1 : current.questHappy, personality: { ...current.personality, comic: current.personality.comic + 2 } }; });
         setEventText(`${nextScore} מתוך 5! הרווחנו ${reward} מטבעות.`); setOverlay("event");
       } else setGuessGame((current) => ({ ...current, answer: null, reveal: "הסיבוב הבא…" }));
     }, 700);
@@ -763,6 +775,7 @@ export default function Prototype() {
       const statusResponse = await fetch(submission.statusUrl, { headers: headersFor("fal", false) });
       if (!statusResponse.ok) throw new Error(`בדיקת משימת fal.ai נכשלה (${statusResponse.status})`);
       const status = await statusResponse.json();
+      if (status.status === "FAILED" || status.status === "ERROR" || (status.status !== "COMPLETED" && status.error)) throw new Error((typeof status.error === "string" ? status.error : status.error?.message) || "משימת fal.ai נכשלה");
       if (status.status === "COMPLETED") {
         if (status.error) throw new Error(status.error);
         const resultResponse = await fetch(submission.responseUrl, { headers: headersFor("fal", false) });
@@ -913,7 +926,7 @@ export default function Prototype() {
       if (clip) {
         await saveClip(animationStorageKey(game.visualRevision, companionMotion), clip);
         const url = URL.createObjectURL(clip);
-        setClipUrls((current) => ({ ...current, [companionMotion]: url }));
+        setClipUrls((current) => { const previous = current[companionMotion]; if (previous) URL.revokeObjectURL(previous); return { ...current, [companionMotion]: url }; });
       }
       setGame((current) => ({ ...current, animationSlots: { ...current.animationSlots, [companionMotion]: true }, memories: [...current.memories, `נוצרה אנימציית ${motionMeta[companionMotion].title}`].slice(-12) }));
       playMotion(companionMotion, 5200); say(`${motionMeta[companionMotion].title} מוכנה. סוף־סוף יש לי כוריאוגרפיה.`); showEffect("heart");
@@ -969,6 +982,7 @@ export default function Prototype() {
           <div className="section-title">סגנון החדר</div><Carousel ariaLabel="בחירת סגנון" className="theme-carousel" contentClassName="theme-track">{themes.map((theme) => <button className={`theme-card ${game.theme === theme.id ? "selected" : ""}`} key={theme.id} onClick={() => setGame((current) => ({ ...current, theme: theme.id }))}><img src={theme.image} alt="" draggable={false} /><span><strong>{theme.title}</strong><small>{theme.note}</small></span>{game.theme === theme.id ? <i><CheckIcon /></i> : null}</button>)}</Carousel>
           <button className="wide-button" onClick={() => fileRef.current?.click()}><CameraIcon />החלפת תמונת הדמות</button>
           <button className="wide-button" onClick={() => void toggleNotifications()}><BellIcon />{game.notificationsEnabled ? "התראות פעילות" : "הפעלת התראות טיפול"}</button>
+          <div className="small-note">תזכורות המערכת תלויות במכשיר שמשאיר את האפליקציה חיה ברקע, ואנדרואיד אוהב לכבות דברים בשקט — אז לפעמים הן פשוט לא יגיעו. בלי קשר: בכל חזרה למשחק מחכה סיכום מלא של מה שקרה בזמן שלא הייתם.</div>
           <button className="wide-button" onClick={() => setOverlay("guide")}><InfoCircledIcon />איך המשחק עובד</button>
           <button className="wide-button accent" onClick={() => { mobileKeyboard.hide(); setOverlay("ai"); }}><MagicWandIcon />AI ואנימציות</button><button className="wide-button danger" onClick={resetGame}><TrashIcon />יצירת דמות חדשה</button>
         </div></FullPage> : null}
@@ -1099,7 +1113,7 @@ function JourneyScreen({ game, stage, evolution, day, personality, careGrade, on
     <article className="evolution-card"><div className="evolution-title"><div><small>יום {day} ביחד · רצף {game.streak}</small><h2>{stageMeta[stage as StageId].title}</h2></div><div className="personality-badge"><FaceIcon />{personalityNames[personality as PersonalityId]}</div></div><div className="evolution-track">{(Object.keys(stageMeta) as StageId[]).map((id,index) => <div className={`${id === stage ? "current" : game.xp >= stageMeta[id].minXp && day >= stageMeta[id].minDay ? "done" : ""}`} key={id}><span>{index + 1}</span><small>{stageMeta[id].title}</small><em>יום {stageMeta[id].minDay}</em></div>)}</div>{stage !== "grown" ? <div className="next-progress"><span>לקראת {stageMeta[evolution.id as StageId].title} · דורש יום {stageMeta[evolution.id as StageId].minDay}</span><strong>{game.xp}/{evolution.target} XP</strong><i><b style={{ width: `${evolution.progress}%` }} /></i><small>השלב נפתח רק כשגם הזמן וגם הניסיון מוכנים.</small></div> : <div className="grown-note"><StarFilledIcon />הגעתם לשלב הבוגר. האופי והזיכרונות ממשיכים להתפתח.</div>}</article>
     <div className="section-heading"><div><small>מתחדש בכל יום</small><h2>משימות יומיות</h2></div><ClockIcon /></div>
     <div className="quest-list">{questDefinitions.map((quest) => { const progress = quest.id === "care" ? game.questCare : quest.id === "game" ? game.questGame : game.questHappy; const complete = progress >= quest.target; const claimed = game.claimed.includes(quest.id); return <button key={quest.id} className={`${complete ? "complete" : ""} ${claimed ? "claimed" : ""}`} onClick={() => onClaim(quest.id, quest.reward, complete)}><span>{claimed ? <CheckIcon /> : complete ? <StarFilledIcon /> : <ClockIcon />}</span><div><strong>{quest.title}</strong><small>{Math.min(progress, quest.target)}/{quest.target}</small><i><b style={{ width: `${Math.min(100, progress / quest.target * 100)}%` }} /></i></div><em>{claimed ? "נאסף" : `+${quest.reward}`}</em></button>; })}</div>
-    <div className="stats-grid"><div><strong>{game.actions}</strong><span>פעולות טיפול</span></div><div><strong>{game.bestStreak}</strong><span>שיא רצף</span></div><div><strong>{game.xp}</strong><span>נקודות ניסיון</span></div></div>
+    <div className="stats-grid"><div><strong>{game.actions}</strong><span>פעולות טיפול</span></div><div><strong>{game.bestStreak}</strong><span>שיא רצף</span></div><div><strong>{game.xp}</strong><span>נקודות ניסיון</span></div><div><strong>{game.careMistakes}</strong><span>רגעי מצוקה</span></div></div>
     {game.memories.length ? <><div className="section-heading memory-title"><div><small>נוצר עם AI</small><h2>הזיכרונות שלנו</h2></div><MagicWandIcon /></div><div className="memory-list">{game.memories.slice(-5).reverse().map((memory: string, index: number) => <div key={`${memory}-${index}`}><StarFilledIcon /><span>{memory}</span></div>)}</div></> : null}
   </section>;
 }
