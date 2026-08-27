@@ -97,20 +97,26 @@ test("return after a missed day resets current streak", () => {
 test("evolution requires both XP and elapsed days", () => {
   const now = new Date(2026, 7, 24, 10).getTime();
   const highXpDayOne = stateAt(now, { xp: 900 });
-  assert.equal(currentStage(highXpDayOne), "baby");
-  assert.equal(currentStage({ ...highXpDayOne, birthAt: now - DAY }), "kid");
-  assert.equal(currentStage({ ...highXpDayOne, birthAt: now - 3 * DAY }), "teen");
-  assert.equal(currentStage({ ...highXpDayOne, birthAt: now - 6 * DAY }), "grown");
+  assert.equal(currentStage(highXpDayOne, now), "baby");
+  assert.equal(currentStage({ ...highXpDayOne, birthAt: now - DAY }, now), "kid");
+  assert.equal(currentStage({ ...highXpDayOne, birthAt: now - 3 * DAY }, now), "teen");
+  assert.equal(currentStage({ ...highXpDayOne, birthAt: now - 6 * DAY }, now), "grown");
 });
 
 test("next-stage progress is gated by the slower of time and XP", () => {
   const now = Date.now();
   const dayOne = stateAt(now, { xp: 160 });
-  const progress = nextStage(dayOne);
+  const progress = nextStage(dayOne, now);
   assert.equal(progress.id, "kid");
   assert.equal(progress.xpProgress, 100);
-  assert.equal(progress.dayProgress, 50);
-  assert.equal(progress.progress, 50);
+  assert.equal(progress.dayProgress, 0);
+  assert.equal(progress.progress, 0);
+  const midTeen = stateAt(now, { xp: 420, birthAt: now - 4 * DAY });
+  const teenProgress = nextStage(midTeen, now);
+  assert.equal(teenProgress.id, "grown");
+  assert.equal(teenProgress.dayProgress, 33.33);
+  assert.equal(teenProgress.xpProgress, 0);
+  assert.equal(teenProgress.progress, 0);
 });
 
 test("long absence is capped and remains recoverable", () => {
@@ -119,6 +125,13 @@ test("long absence is capped and remains recoverable", () => {
   assert.equal(result.lastSeen, now + 30 * DAY);
   assert.ok(result.fullness >= 0 && result.energy >= 0 && result.hygiene >= 0 && result.mood >= 0);
   assert.equal("dead" in result, false);
+});
+
+test("a long absence reports the real elapsed time, not the decay cap", () => {
+  const now = Date.now();
+  const result = applyElapsed(stateAt(now), now + 30 * DAY);
+  assert.equal(result.awayMinutes, 30 * 24 * 60);
+  assert.match(absenceMessage("נועה", result.awayMinutes), /30 ימים/);
 });
 
 test("all four care actions change the intended needs and personality", () => {
@@ -148,6 +161,13 @@ test("every sixth care action grants the room discovery bonus", () => {
   const result = performCareAction(stateAt(now, { actions: 5, coins: 10 }), "play", now);
   assert.equal(result.actions, 6);
   assert.equal(result.coins, 22);
+});
+
+test("the discovery bonus is not farmable by repeating a filled need", () => {
+  const now = Date.now();
+  const result = performCareAction(stateAt(now, { actions: 5, coins: 10, mood: 100 }), "play", now);
+  assert.equal(result.actions, 6);
+  assert.equal(result.coins, 10);
 });
 
 test("inventory use consumes exactly one item and applies its effect", () => {

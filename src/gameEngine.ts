@@ -59,10 +59,17 @@ export const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(val
 export const whole = (value: number) => Math.round(value);
 
 export function absenceMessage(name: string, awayMinutes: number) {
-  const elapsed = awayMinutes >= 60 ? `${Math.floor(awayMinutes / 60)} שעות` : `${awayMinutes} דקות`;
-  if (awayMinutes >= 24 * 60) return `עברו ${elapsed}. ${name} התגעגע. גם הרצפה, מסיבות פחות מרגשות.`;
-  if (awayMinutes >= 2 * 60) return `עברו ${elapsed}. ${name} ניהל את החדר לבד. הדוח עדיין חסוי.`;
-  return `עברו ${elapsed}. ${name} שמר לך מקום והעמיד פנים שזה לא היה געגוע.`;
+  const awayHours = Math.floor(awayMinutes / 60);
+  const awayDays = Math.floor(awayMinutes / 1440);
+  const elapsed = awayHours < 1 ? `עברו ${awayMinutes} דקות`
+    : awayHours < 2 ? "עברה שעה"
+    : awayHours < 3 ? "עברו שעתיים"
+    : awayHours < 48 ? `עברו ${awayHours} שעות`
+    : awayDays < 3 ? "עברו יומיים"
+    : `עברו ${awayDays} ימים`;
+  if (awayMinutes >= 24 * 60) return `${elapsed}. ${name} התגעגע. גם הרצפה, מסיבות פחות מרגשות.`;
+  if (awayMinutes >= 2 * 60) return `${elapsed}. ${name} ניהל את החדר לבד. הדוח עדיין חסוי.`;
+  return `${elapsed}. ${name} שמר לך מקום והעמיד פנים שזה לא היה געגוע.`;
 }
 
 export const defaultState: GameState = {
@@ -107,12 +114,14 @@ export function nextStage(state: GameState, now = Date.now()) {
   const start = stageMeta[stage].minXp;
   const target = stageMeta[next].minXp;
   const xpProgress = clamp(((state.xp - start) / (target - start)) * 100);
-  const dayProgress = clamp((ageDay(state, now) / stageMeta[next].minDay) * 100);
+  const dayStart = stageMeta[stage].minDay;
+  const dayProgress = clamp(((ageDay(state, now) - dayStart) / (stageMeta[next].minDay - dayStart)) * 100);
   return { id: next, target, progress: Math.min(xpProgress, dayProgress), xpProgress, dayProgress };
 }
 
 export function applyElapsed(state: GameState, now = Date.now()): GameState {
-  const hours = Math.min(72, Math.max(0, now - state.lastSeen) / HOUR);
+  const elapsedHours = Math.max(0, now - state.lastSeen) / HOUR;
+  const hours = Math.min(72, elapsedHours);
   if (hours <= 0) return state;
   const wasSleeping = state.sleeping && state.sleepingUntil > state.lastSeen;
   const sleepHours = wasSleeping ? Math.max(0, Math.min(now, state.sleepingUntil) - state.lastSeen) / HOUR : 0;
@@ -146,7 +155,7 @@ export function applyElapsed(state: GameState, now = Date.now()): GameState {
     questHappy: dayChanged ? 0 : state.questHappy,
     claimed: dayChanged ? [] : state.claimed,
     coins: dayChanged ? state.coins + 10 : state.coins,
-    awayMinutes: hours >= .25 ? Math.round(hours * 60) : state.awayMinutes,
+    awayMinutes: hours >= .25 ? Math.round(elapsedHours * 60) : state.awayMinutes,
     lastSeen: now,
   };
 }
@@ -186,7 +195,7 @@ export function performCareAction(state: GameState, action: ActionKey, now = Dat
     next.personality.comic += 2;
   }
   next.questHappy = next.mood >= 85 ? 1 : state.questHappy;
-  if (next.actions % 6 === 0) next.coins += 12;
+  if (usefulCare > 3 && next.actions % 6 === 0) next.coins += 12;
   return next;
 }
 

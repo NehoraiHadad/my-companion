@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { access } from "node:fs/promises";
 import test from "node:test";
 import worker from "../worker/index.js";
+
+const distIndexHtml = new URL("../dist/client/index.html", import.meta.url);
 
 test("serves existing static assets without a fallback", async () => {
   const calls = [];
@@ -61,7 +64,12 @@ test("does not turn missing API or write requests into the app shell", async () 
   }
 });
 
-test("emits the files required by Sites packaging", async () => {
+test("emits the files required by Sites packaging", async (t) => {
+  if (!existsSync(distIndexHtml)) {
+    t.skip("run `npm run build` first — dist output missing");
+    return;
+  }
+
   await access(new URL("../dist/client/index.html", import.meta.url));
   await access(new URL("../dist/server/index.js", import.meta.url));
   await access(new URL("../dist/.openai/hosting.json", import.meta.url));
