@@ -32,6 +32,7 @@ export type GameState = {
   questCare: number;
   questGame: number;
   questHappy: number;
+  arcadePlays: number;
   claimed: string[];
   personality: Record<PersonalityId, number>;
   inventory: Record<ItemKey, number>;
@@ -71,9 +72,9 @@ export function absenceMessage(name: string, awayMinutes: number) {
     : awayHours < 48 ? `עברו ${awayHours} שעות`
     : awayDays < 3 ? "עברו יומיים"
     : `עברו ${awayDays} ימים`;
-  if (awayMinutes >= 24 * 60) return `${elapsed}. ${name} התגעגע. גם הרצפה, מסיבות פחות מרגשות.`;
-  if (awayMinutes >= 2 * 60) return `${elapsed}. ${name} ניהל את החדר לבד. הדוח עדיין חסוי.`;
-  return `${elapsed}. ${name} שמר לך מקום והעמיד פנים שזה לא היה געגוע.`;
+  if (awayMinutes >= 24 * 60) return `${elapsed}. אצל ${name} היה פה געגוע גדול. גם אצל הרצפה, מסיבות פחות מרגשות.`;
+  if (awayMinutes >= 2 * 60) return `${elapsed}. החדר של ${name} נוהל בעצמאות מרשימה. הדוח עדיין חסוי.`;
+  return `${elapsed}. אצל ${name} נשמר לך מקום, והגעגוע הוסתר בכישרון בינוני.`;
 }
 
 export const defaultState: GameState = {
@@ -82,7 +83,7 @@ export const defaultState: GameState = {
   xp: 0, coins: 80, careScore: 82, careMistakes: 0, actions: 0,
   poop: 0, sick: false, sleeping: false,
   birthAt: Date.now(), lastSeen: Date.now(), dailyKey: localDayKey(),
-  questCare: 0, questGame: 0, questHappy: 0, claimed: [],
+  questCare: 0, questGame: 0, questHappy: 0, arcadePlays: 0, claimed: [],
   personality: { curious: 0, cozy: 0, comic: 0 },
   inventory: { apple: 3, meal: 1, soap: 2, medicine: 1, ball: 1 },
   streak: 1, bestStreak: 1, lastVisitKey: localDayKey(), nextMessAt: Date.now() + 5.5 * HOUR,
@@ -150,9 +151,12 @@ export function nextStage(state: GameState, now = Date.now()) {
   return { id: next, target, progress: Math.min(xpProgress, dayProgress), xpProgress, dayProgress };
 }
 
+export const arcadePayoutScale = (plays: number) => (plays < 3 ? 1 : 0.25);
+
 export function applyElapsed(state: GameState, now = Date.now()): GameState {
   const elapsedHours = Math.max(0, now - state.lastSeen) / HOUR;
   const hours = Math.min(72, elapsedHours);
+  if (now < state.lastSeen) return { ...state, lastSeen: now };
   if (hours <= 0) return state;
   const wasSleeping = state.sleeping && state.sleepingUntil > state.lastSeen;
   const sleepHours = wasSleeping ? Math.max(0, Math.min(now, state.sleepingUntil) - state.lastSeen) / HOUR : 0;
@@ -175,7 +179,7 @@ export function applyElapsed(state: GameState, now = Date.now()): GameState {
     ...state, fullness, energy, hygiene, mood, poop,
     sick: state.sick || hygiene < 12 || poop >= 3,
     sleeping: wasSleeping && now < state.sleepingUntil,
-    careScore: clamp(state.careScore - hours * (.18 + carePressure * .52 + dangerCount * 1.35)),
+    careScore: clamp(state.careScore - hours * (.18 + carePressure * .3 + dangerCount * .7)),
     careMistakes: state.careMistakes + (hours >= 1 ? dangerCount : 0),
     nextMessAt: extraPoop ? state.nextMessAt + extraPoop * 5.5 * HOUR : state.nextMessAt,
     dailyKey: currentKey,
@@ -185,6 +189,7 @@ export function applyElapsed(state: GameState, now = Date.now()): GameState {
     questCare: dayChanged ? 0 : state.questCare,
     questGame: dayChanged ? 0 : state.questGame,
     questHappy: dayChanged ? 0 : state.questHappy,
+    arcadePlays: dayChanged ? 0 : state.arcadePlays,
     claimed: dayChanged ? [] : state.claimed,
     coins: dayChanged ? state.coins + 10 + 2 * Object.values(state.decorations).filter(Boolean).length : state.coins,
     awayMinutes: hours >= .25 ? Math.round(elapsedHours * 60) : state.awayMinutes,
@@ -196,14 +201,14 @@ const actionNeed: Record<ActionKey, NeedKey> = { feed: "fullness", sleep: "energ
 
 export function performCareAction(state: GameState, action: ActionKey, now = Date.now()): GameState {
   const need = state[actionNeed[action]];
-  const usefulCare = Math.max(3, Math.min(14, Math.round((105 - need) / 8)));
+  const usefulCare = Math.max(4, Math.min(10, Math.round((95 - need) / 9)));
   const hour = new Date(now).getHours();
   const night = hour < 7 || hour >= 20;
   const next: GameState = {
     ...state,
     xp: state.xp + usefulCare,
     actions: state.actions + 1,
-    careScore: clamp(state.careScore + Math.max(1, usefulCare / 4)),
+    careScore: clamp(state.careScore + Math.max(3, usefulCare / 2)),
     lastSeen: now,
     sleeping: action === "sleep" ? !state.sleeping : false,
     sleepingUntil: action === "sleep" && !state.sleeping ? now + (night ? 60 : 30) * 60_000 : 0,
@@ -221,7 +226,7 @@ export function performCareAction(state: GameState, action: ActionKey, now = Dat
   }
   if (action === "clean") {
     next.hygiene = 100; next.poop = 0; next.nextMessAt = now + 5.5 * HOUR;
-    next.sick = state.sick && state.hygiene < 20;
+    next.sick = state.sick;
     next.personality.curious += 1;
   }
   if (action === "play") {
@@ -229,7 +234,7 @@ export function performCareAction(state: GameState, action: ActionKey, now = Dat
     next.personality.comic += 2;
   }
   next.questHappy = next.mood >= 85 ? 1 : state.questHappy;
-  if (usefulCare > 3 && next.actions % 6 === 0) next.coins += 12;
+  if (usefulCare > 4 && next.actions % 6 === 0) next.coins += 12;
   return next;
 }
 

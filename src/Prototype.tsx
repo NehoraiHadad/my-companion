@@ -19,13 +19,14 @@ import {
 import { loadClip, loadMedia, removeClips, removeMedia, saveClip, saveMedia } from "./mediaStore";
 import { Carousel, KeyboardInput, MobileScroll, useKeyboard } from "./mobile";
 import {
-  HOUR, absenceMessage, ageDay, applyElapsed, buyDecoration, claimStreakMilestone, clamp, currentStage, decorMeta, defaultState, localDayKey,
+  HOUR, absenceMessage, ageDay, applyElapsed, arcadePayoutScale, buyDecoration, claimStreakMilestone, clamp, currentStage, decorMeta, defaultState, localDayKey,
   nextStage, performCareAction, stageMeta, streakMilestones, useInventoryItem, whole,
   type ActionKey, type CharacterKind, type CompanionMotion, type DecorKey, type GameState, type ItemKey, type NeedKey, type PersonalityId, type StageId, type ThemeId,
 } from "./gameEngine";
 import "./prototype.css";
 
 type ScreenId = "home" | "arcade" | "journey" | "bag";
+type OverlayId = "settings" | "ai" | "guide" | "event";
 type EffectKind = "food" | "heart" | "bubble" | "moon" | "coin" | "medicine";
 
 type AiSettings = {
@@ -170,6 +171,12 @@ const kindLabels: Record<Exclude<CharacterKind, "">, { title: string; note: stri
 };
 
 
+const guessTells = [
+  { id: "lean", label: "רכינה", reliability: .85, phrase: "אמין מאוד" },
+  { id: "ear", label: "זיז אוזן", reliability: .6, phrase: "ככה־ככה" },
+  { id: "blink", label: "מצמוץ", reliability: .4, phrase: "חשוד ביותר" },
+];
+
 const questDefinitions = [
   { id: "care", title: "שלוש פעולות טיפול", target: 3, reward: 25 },
   { id: "game", title: "משחק אחד בארקייד", target: 1, reward: 35 },
@@ -182,7 +189,7 @@ function loadState(): GameState {
     if (!fresh) {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as GameState | null;
       if (saved?.version === 5) {
-        return applyElapsed({ ...defaultState, ...saved, memories: saved.memories ?? [], animationSlots: saved.animationSlots ?? {}, aiCharacter: saved.aiCharacter ?? false, characterVariants: saved.characterVariants ?? {}, aiRooms: saved.aiRooms ?? {}, decorations: saved.decorations ?? {}, claimedMilestones: saved.claimedMilestones ?? [], sourcePhoto: saved.sourcePhoto ?? saved.photo });
+        return applyElapsed({ ...defaultState, ...saved, memories: saved.memories ?? [], animationSlots: saved.animationSlots ?? {}, aiCharacter: saved.aiCharacter ?? false, characterVariants: saved.characterVariants ?? {}, aiRooms: saved.aiRooms ?? {}, decorations: saved.decorations ?? {}, claimedMilestones: saved.claimedMilestones ?? [], arcadePlays: saved.arcadePlays ?? 0, sourcePhoto: saved.sourcePhoto ?? saved.photo });
       }
       const v4 = JSON.parse(localStorage.getItem(V4_STORAGE_KEY) ?? "null") as Partial<GameState> | null;
       const v3 = JSON.parse(localStorage.getItem(V3_STORAGE_KEY) ?? "null") as Partial<GameState> | null;
@@ -286,7 +293,11 @@ export default function Prototype() {
   const mobileKeyboard = useKeyboard();
   const [game, setGame] = useState<GameState>(loadState);
   const [screen, setScreen] = useState<ScreenId>("home");
-  const [overlay, setOverlay] = useState<"settings" | "ai" | "guide" | "event" | null>(null);
+  const [overlays, setOverlays] = useState<OverlayId[]>([]);
+  const overlaysRef = useRef<OverlayId[]>([]);
+  const overlay = overlays.length ? overlays[overlays.length - 1] : null;
+  const [pendingEvent, setPendingEvent] = useState("");
+  const [persistFailed, setPersistFailed] = useState(false);
   const [reaction, setReaction] = useState("חיכיתי לך. ספרתי עד שבע ואז איבדתי ריכוז.");
   const [reactionId, setReactionId] = useState(0);
   const [effect, setEffect] = useState<{ id: number; kind: EffectKind } | null>(null);
@@ -315,22 +326,39 @@ export default function Prototype() {
   const [clipUrls, setClipUrls] = useState<Partial<Record<CompanionMotion, string>>>({});
   const [chatInput, setChatInput] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
-  const [starGame, setStarGame] = useState({ active: false, time: 20, score: 0, lane: 1, target: 1, targetId: 0 });
-  const [guessGame, setGuessGame] = useState({ active: false, round: 0, score: 0, answer: null as "left" | "right" | null, reveal: "", secret: "left" as "left" | "right", hint: "left" as "left" | "right" });
+  const [starGame, setStarGame] = useState({ active: false, time: 20, score: 0, lane: 1, target: 1, targetId: 0, spawnAt: 0 });
+  const [guessGame, setGuessGame] = useState({ active: false, round: 0, score: 0, answer: null as "left" | "right" | null, reveal: "", secret: "left" as "left" | "right", hint: "left" as "left" | "right", tellLabel: guessTells[0].label, tellPhrase: guessTells[0].phrase });
   const fileRef = useRef<HTMLInputElement | null>(null);
   const motionTimerRef = useRef<number | null>(null);
   const starFinishedRef = useRef(false);
+  const starTapRef = useRef(0);
+  const revisionRef = useRef(game.visualRevision);
+  const audioRef = useRef<{ audio: HTMLAudioElement; release: () => void } | null>(null);
+  const jobCancelRef = useRef({ cancelled: false });
 
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...game, lastSeen: Date.now(), awayMinutes: 0 })); }
-    catch { /* the game keeps running from memory even when the device refuses to store */ }
+    try {
+      const { sourcePhoto, ...rest } = game;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, ...(sourcePhoto && sourcePhoto !== game.photo ? { sourcePhoto } : {}), lastSeen: Date.now(), awayMinutes: 0 }));
+      setPersistFailed(false);
+    }
+    catch { setPersistFailed(true); /* the game keeps running from memory even when the device refuses to store */ }
   }, [game]);
-  useEffect(() => { sessionStorage.setItem(AI_KEY, JSON.stringify(ai)); }, [ai]);
+  useEffect(() => {
+    try { sessionStorage.setItem(AI_KEY, JSON.stringify(ai)); }
+    catch { /* a locked-down browser still lets the session run from memory */ }
+  }, [ai]);
+  useEffect(() => { revisionRef.current = game.visualRevision; }, [game.visualRevision]);
   useEffect(() => () => { if (motionTimerRef.current) window.clearTimeout(motionTimerRef.current); }, []);
+  useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
   useEffect(() => { resetScroll(".app-screen .mobile-scroll"); }, [screen]);
   useEffect(() => {
-    if (game.onboarded && !game.guideSeen && !overlay) setOverlay("guide");
-  }, [game.onboarded, game.guideSeen, overlay]);
+    if (game.onboarded && !game.guideSeen && !overlaysRef.current.length) pushOverlay("guide");
+  }, [game.onboarded, game.guideSeen, overlays.length]);
+  useEffect(() => {
+    if (!pendingEvent || overlays.length) return;
+    setEventText(pendingEvent); setPendingEvent(""); pushOverlay("event");
+  }, [pendingEvent, overlays.length]);
   useEffect(() => {
     const update = () => setGame((current) => applyElapsed(current));
     const timer = window.setInterval(update, 30_000);
@@ -349,11 +377,12 @@ export default function Prototype() {
           const clip = await loadClip(animationStorageKey(game.visualRevision, motion));
           if (clip) {
             const url = URL.createObjectURL(clip);
+            if (cancelled) { URL.revokeObjectURL(url); return; }
             objectUrls.push(url); restored[motion] = url;
           }
         } catch { /* the game remains playable with local motion */ }
       }
-      if (!cancelled) setClipUrls(restored);
+      if (!cancelled) setClipUrls((current) => ({ ...current, ...restored }));
     };
     void restore();
     return () => { cancelled = true; objectUrls.forEach((url) => URL.revokeObjectURL(url)); };
@@ -369,6 +398,7 @@ export default function Prototype() {
           const image = await loadMedia(characterStorageKey(game.visualRevision, visual));
           if (image) {
             const url = URL.createObjectURL(image);
+            if (cancelled) { URL.revokeObjectURL(url); return; }
             objectUrls.push(url); restored[visual] = url;
           }
         } catch { /* the original photo remains available as a fallback */ }
@@ -390,6 +420,7 @@ export default function Prototype() {
           const image = await loadMedia(roomStorageKey(theme, set));
           if (image) {
             const url = URL.createObjectURL(image);
+            if (cancelled) { URL.revokeObjectURL(url); return; }
             objectUrls.push(url); restored[theme] = url;
           }
         } catch { /* the original room art stays in place */ }
@@ -401,8 +432,7 @@ export default function Prototype() {
   }, [game.aiRooms]);
   useEffect(() => {
     if (!game.onboarded || game.awayMinutes < 15) return;
-    setEventText(absenceMessage(game.name, game.awayMinutes));
-    setOverlay("event");
+    showEvent(absenceMessage(game.name, game.awayMinutes));
     setGame((current) => ({ ...current, awayMinutes: 0 }));
   }, [game.awayMinutes, game.onboarded]);
   useEffect(() => {
@@ -430,7 +460,7 @@ export default function Prototype() {
   useEffect(() => {
     if (!starGame.active) return;
     const tick = window.setInterval(() => setStarGame((current) => current.time <= 1 ? { ...current, active: false, time: 0 } : { ...current, time: current.time - 1 }), 1000);
-    const drop = window.setInterval(() => setStarGame((current) => current.active ? { ...current, target: Math.floor(Math.random() * 3), targetId: current.targetId + 1 } : current), 900);
+    const drop = window.setInterval(() => setStarGame((current) => current.active ? { ...current, target: Math.floor(Math.random() * 3), targetId: current.targetId + 1, spawnAt: Date.now() } : current), 900);
     return () => { window.clearInterval(tick); window.clearInterval(drop); };
   }, [starGame.active]);
   useEffect(() => {
@@ -460,6 +490,15 @@ export default function Prototype() {
   const hour = new Date().getHours();
   const isNight = hour < 7 || hour >= 20;
 
+  const applyOverlays = (next: OverlayId[]) => { overlaysRef.current = next; setOverlays(next); };
+  const pushOverlay = (id: OverlayId) => applyOverlays([...overlaysRef.current, id]);
+  const popOverlay = () => applyOverlays(overlaysRef.current.slice(0, -1));
+  const closeAllOverlays = () => applyOverlays([]);
+  const showEvent = (text: string) => {
+    if (overlaysRef.current.some((id) => id !== "event")) { setPendingEvent(text); return; }
+    setEventText(text); pushOverlay("event");
+  };
+
   const say = (text: string) => { setReaction(text); setReactionId((id) => id + 1); };
   const showEffect = (kind: EffectKind) => { setEffect({ id: Date.now(), kind }); window.setTimeout(() => setEffect(null), 1300); };
   const playMotion = (motion: CompanionMotion, duration = 2600, hold = false) => {
@@ -474,25 +513,21 @@ export default function Prototype() {
       return;
     }
     if (!("Notification" in window)) {
-      setEventText("המכשיר לא פתח ערוץ להתראות מערכת. החזרה למשחק עדיין תציג בדיוק מה קרה בזמן שלא היית.");
-      setOverlay("event");
+      showEvent("המכשיר לא פתח ערוץ להתראות מערכת. החזרה למשחק עדיין תציג בדיוק מה קרה בזמן שלא היית.");
       return;
     }
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       setGame((current) => ({ ...current, notificationsEnabled: true }));
       new Notification("ההתראות פעילות", { body: `${game.name} יקרא לך רק כשבאמת צריך.`, tag: "companion-ready" });
-    } else {
-      setEventText("Android לא אישר התראות. אפשר לנסות שוב מהגדרות האפליקציה במכשיר.");
-      setOverlay("event");
-    }
+    } else showEvent("Android לא אישר התראות. אפשר לנסות שוב מהגדרות האפליקציה במכשיר.");
   };
 
   const performAction = (action: ActionKey) => {
     const next = performCareAction(game, action);
     setGame(next);
     const foundCoins = next.coins - game.coins >= 12;
-    if (foundCoins) window.setTimeout(() => { setEventText(`${game.name} מצא 12 מטבעות מתחת לשטיח. לא שואלים שאלות.`); setOverlay("event"); showEffect("coin"); }, 400);
+    if (foundCoins) window.setTimeout(() => { showEvent(`${game.name} מצא 12 מטבעות מתחת לשטיח. לא שואלים שאלות.`); showEffect("coin"); }, 400);
     const kind = game.characterKind || "person";
     const lines = [...sharedReactions[action], ...kindReactions[kind][action], ...personalityReactions[personality][action]];
     say(lines[Math.floor(Math.random() * lines.length)]); showEffect(actionsMeta[action].effect);
@@ -504,9 +539,9 @@ export default function Prototype() {
         `דיווח מהחדר: הכול בשליטה, חוץ ממה שלא.`,
         `${game.name} ניסה להיות רציני במשך שבע שניות. כמעט הצליח.`,
       ];
-      setEventText(reports[next.actions % reports.length]); setOverlay("event");
+      showEvent(reports[Math.floor(next.actions / 9) % reports.length]);
     }, 520);
-    if (aiStatus === "ready" && ai.autoEvents && next.actions % 4 === 0) window.setTimeout(() => void askAi("ספר על מה שקרה אחרי פעולת הטיפול האחרונה"), 650);
+    if (aiStatus === "ready" && ai.autoEvents && next.actions % 4 === 0) window.setTimeout(() => void askAi("ספר על מה שקרה אחרי פעולת הטיפול האחרונה", next), 650);
   };
 
   const useItem = (key: ItemKey) => {
@@ -519,7 +554,7 @@ export default function Prototype() {
 
   const buyItem = (key: ItemKey) => {
     if (game.coins < items[key].price) { say("חסרים לנו מטבעות. הארקייד קורא לנו."); return; }
-    setGame((current) => ({ ...current, coins: current.coins - items[key].price, inventory: { ...current.inventory, [key]: current.inventory[key] + 1 } }));
+    setGame((current) => current.coins < items[key].price ? current : ({ ...current, coins: current.coins - items[key].price, inventory: { ...current.inventory, [key]: current.inventory[key] + 1 } }));
     showEffect("coin");
   };
 
@@ -541,27 +576,36 @@ export default function Prototype() {
 
   const claimQuest = (id: string, reward: number, complete: boolean) => {
     if (!complete || game.claimed.includes(id)) return;
-    setGame((current) => ({ ...current, coins: current.coins + reward, xp: current.xp + reward, claimed: [...current.claimed, id] }));
+    setGame((current) => current.claimed.includes(id) ? current : ({ ...current, coins: current.coins + reward, xp: current.xp + reward, claimed: [...current.claimed, id] }));
     showEffect("coin"); say(`משימה הושלמה! קיבלנו ${reward} מטבעות.`);
   };
 
+  const startStarGame = () => { starTapRef.current = 0; setStarGame({ active: true, time: 20, score: 0, lane: 1, target: 1, targetId: Date.now(), spawnAt: Date.now() }); };
+
   const finishStarGame = (score: number) => {
-    const reward = Math.max(5, score * 3);
-    setGame((current) => { const mood = clamp(current.mood + 12); return { ...current, coins: current.coins + reward, xp: current.xp + score * 3, mood, questGame: 1, questHappy: mood >= 85 ? 1 : current.questHappy, personality: { ...current.personality, curious: current.personality.curious + 2 } }; });
-    setEventText(`תפסנו ${score} כוכבים וקיבלנו ${reward} מטבעות.`); setOverlay("event"); showEffect("coin");
+    const scale = arcadePayoutScale(game.arcadePlays);
+    const reward = Math.round(Math.min(75, Math.max(5, score * 3)) * scale);
+    const xpGain = Math.min(50, score * 2);
+    setGame((current) => { const mood = clamp(current.mood + 12); return { ...current, coins: current.coins + reward, xp: current.xp + xpGain, mood, arcadePlays: current.arcadePlays + 1, questGame: 1, questHappy: mood >= 85 ? 1 : current.questHappy, personality: { ...current.personality, curious: current.personality.curious + 2 } }; });
+    showEvent(`תפסנו ${score} כוכבים וקיבלנו ${reward} מטבעות.${scale < 1 ? " (מנוחה מהארקייד — פרס מוקטן)" : ""}`); showEffect("coin");
   };
 
-  const catchLane = (lane: number) => setStarGame((current) => {
-    if (!current.active) return current;
-    const hit = lane === current.target;
+  const catchLane = (lane: number) => {
+    if (!starGame.active) return;
+    const now = Date.now();
+    if (now - starTapRef.current < 220) return;
+    starTapRef.current = now;
+    const since = now - starGame.spawnAt;
+    const hit = lane === starGame.target && since >= 250 && since <= 900;
     if (hit) showEffect("coin");
-    return { ...current, lane, score: Math.max(0, current.score + (hit ? 1 : -1)), target: Math.floor(Math.random() * 3), targetId: current.targetId + 1 };
-  });
+    setStarGame((current) => current.active ? { ...current, lane, score: Math.max(0, current.score + (hit ? 1 : -1)), target: Math.floor(Math.random() * 3), targetId: current.targetId + 1, spawnAt: now } : current);
+  };
 
   const rollGuessRound = () => {
     const secret: "left" | "right" = Math.random() > .5 ? "left" : "right";
     const opposite: "left" | "right" = secret === "left" ? "right" : "left";
-    return { secret, hint: Math.random() < .7 ? secret : opposite };
+    const tell = guessTells[Math.floor(Math.random() * guessTells.length)];
+    return { secret, hint: Math.random() < tell.reliability ? secret : opposite, tellLabel: tell.label, tellPhrase: tell.phrase };
   };
   const startGuess = () => setGuessGame({ active: true, round: 0, score: 0, answer: null, reveal: `לאן ${game.name} יקפוץ?`, ...rollGuessRound() });
   const makeGuess = (choice: "left" | "right") => {
@@ -573,28 +617,32 @@ export default function Prototype() {
     setGuessGame((current) => ({ ...current, active: nextRound < 5, round: nextRound, score: nextScore, answer, reveal: hit ? "בול!" : "כמעט!" }));
     window.setTimeout(() => {
       if (nextRound >= 5) {
-        const reward = 10 + nextScore * 5;
-        setGame((current) => { const mood = clamp(current.mood + 10); return { ...current, coins: current.coins + reward, xp: current.xp + nextScore * 5, questGame: 1, mood, questHappy: mood >= 85 ? 1 : current.questHappy, personality: { ...current.personality, comic: current.personality.comic + 2 } }; });
-        setEventText(`${nextScore} מתוך 5! הרווחנו ${reward} מטבעות.`); setOverlay("event");
+        const scale = arcadePayoutScale(game.arcadePlays);
+        const reward = Math.round(Math.min(60, nextScore * 6) * scale);
+        setGame((current) => { const mood = clamp(current.mood + 10); return { ...current, coins: current.coins + reward, xp: current.xp + nextScore * 5, arcadePlays: current.arcadePlays + 1, questGame: 1, mood, questHappy: mood >= 85 ? 1 : current.questHappy, personality: { ...current.personality, comic: current.personality.comic + 2 } }; });
+        showEvent(`${nextScore} מתוך 5! הרווחנו ${reward} מטבעות.${scale < 1 ? " (מנוחה מהארקייד — פרס מוקטן)" : ""}`);
       } else setGuessGame((current) => ({ ...current, answer: null, reveal: "הסיבוב הבא…", ...rollGuessRound() }));
     }, 700);
   };
 
   const handlePhoto = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]; if (!file) return;
+    const input = event.target;
+    const file = input.files?.[0]; if (!file) return;
     const reader = new FileReader();
+    reader.onerror = () => { say("לא הצלחנו לקרוא את הקובץ — נסו תמונה אחרת"); setAiError("לא הצלחנו לקרוא את הקובץ — נסו תמונה אחרת"); };
     reader.onload = async () => {
       const compressed = await compressImage(String(reader.result));
       const oldKeys = [
         ...(Object.keys(game.animationSlots) as CompanionMotion[]).map((motion) => animationStorageKey(game.visualRevision, motion)),
         ...characterVisuals.map((visual) => characterStorageKey(game.visualRevision, visual)),
       ];
-      void removeMedia(oldKeys);
+      void removeMedia(oldKeys).catch(() => {});
       setGame((current) => ({ ...current, photo: compressed, sourcePhoto: compressed, visualRevision: current.visualRevision + 1, animationSlots: {}, aiCharacter: false, characterVariants: {} }));
       setClipUrls({}); setCharacterUrls({}); setActiveMotion("idle");
       say("התמונה נכנסה. היא כבר השתלטה על התאורה.");
     };
     reader.readAsDataURL(file);
+    input.value = "";
   };
 
   const mockAi = import.meta.env.DEV && new URLSearchParams(location.search).get("mockAi") === "1";
@@ -609,6 +657,11 @@ export default function Prototype() {
     if (url.endsWith("/responses")) return new Response(JSON.stringify({ output_text: JSON.stringify({ dialogue: "חלמתי שהקערה שלי זכתה בתחרות ריקודים.", emotion: "happy", animation: "bounce", memory: "חלום על קערה רוקדת", bonus: 2 }) }), { status: 200 });
     if (url.includes("/videos")) return new Response(JSON.stringify({ id: "mock-video", status: "completed", unsigned_urls: [] }), { status: 200 });
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ dialogue: "יש לי תחושה שהיום יקרה משהו מצחיק ליד הקערה.", emotion: "curious", animation: "glow", memory: "תחושה ליד הקערה", bonus: 2 }) } }] }), { status: 200 });
+  };
+
+  const readJson = async (response: Response) => {
+    try { return await response.json(); }
+    catch { throw new Error("התקבלה תשובה שאינה JSON מהספק — ייתכן שהרשת חוסמת את החיבור"); }
   };
 
   const keyFor = (provider: MediaProvider) => provider === "openai" ? ai.openAiKey : provider === "openrouter" ? ai.openRouterKey : provider === "kie" ? ai.kieKey : ai.falKey;
@@ -643,13 +696,13 @@ export default function Prototype() {
         // A connection test never spends provider credits in preview mode.
       } else if (ai.provider === "kie") {
         const response = await fetch("https://api.kie.ai/api/v1/chat/credit", { headers: headersFor("kie", false) });
-        if (!response.ok || (await response.json()).code !== 200) throw new Error("מפתח KIE לא אושר");
+        if (!response.ok || (await readJson(response)).code !== 200) throw new Error("מפתח KIE לא אושר");
       } else if (ai.provider === "fal") {
         if (ai.falKey.trim().length < 12) throw new Error("מפתח fal.ai נראה קצר מדי");
       } else {
         const response = await aiFetch(`${providerBase()}/models`, { headers: authHeaders(false) });
         if (!response.ok) throw new Error(`בדיקת החיבור נכשלה (${response.status})`);
-        const data = await response.json();
+        const data = await readJson(response);
         const allModels = (data.data ?? []) as ImageModel[];
         if (ai.provider === "openai" && !allModels.some((model) => model.id === ai.textModel)) {
         const preferredText = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.4-mini", "gpt-5-mini"].find((id) => allModels.some((model) => model.id === id));
@@ -697,7 +750,7 @@ export default function Prototype() {
         const data = await response.json();
         const available = (data.data ?? []) as ImageModel[];
         if (!available.some((model) => model.id === ai.imageModel)) throw new Error(`${ai.imageModel} אינו זמין בפרויקט הזה`);
-        setImageModels([{ id: ai.imageModel, name: ai.imageModel }]); setVideoModels([]);
+        setImageModels([{ id: ai.imageModel, name: ai.imageModel }]);
       } else {
         const imagesResponse = await fetch(`${mediaBase()}/images/models`, { headers: mediaHeaders(false) });
         if (!imagesResponse.ok) throw new Error(`בדיקת OpenRouter נכשלה (${imagesResponse.status})`);
@@ -715,7 +768,7 @@ export default function Prototype() {
     if (mockAi) return;
     if (provider === "kie") {
       const response = await fetch("https://api.kie.ai/api/v1/chat/credit", { headers: headersFor("kie", false) });
-      if (!response.ok || (await response.json()).code !== 200) throw new Error("מפתח KIE לא אושר");
+      if (!response.ok || (await readJson(response)).code !== 200) throw new Error("מפתח KIE לא אושר");
     } else if (provider === "fal") {
       if (ai.falKey.trim().length < 12) throw new Error("מפתח fal.ai נראה קצר מדי");
     } else {
@@ -767,9 +820,10 @@ export default function Prototype() {
   const speak = async (text = reaction) => {
     if (voiceStatus !== "ready") { setAiError("צריך להפעיל ספק קול לפני ההשמעה."); return; }
     setIsSpeaking(true); setAiError("");
+    let url = ""; let revoke = false; let released = false;
+    const release = () => { if (revoke && url && !released) { released = true; URL.revokeObjectURL(url); } };
     try {
       if (mockAi) return;
-      let url = ""; let revoke = false;
       if (ai.voiceProvider === "kie") {
         url = await runKieTask({ model: ai.voiceModel, input: { text, voice: "Rachel", stability: .5, similarity_boost: .75, style: .15, speed: 1, timestamps: false, language_code: "he" } });
       } else if (ai.voiceProvider === "fal") {
@@ -780,18 +834,25 @@ export default function Prototype() {
         if (!response.ok) throw new Error(`יצירת הקול נכשלה (${response.status})`);
         url = URL.createObjectURL(await response.blob()); revoke = true;
       }
+      if (audioRef.current) { audioRef.current.audio.pause(); audioRef.current.release(); audioRef.current = null; }
       const audio = new Audio(url);
-      if (revoke) audio.onended = () => URL.revokeObjectURL(url);
+      const forget = () => { if (audioRef.current?.audio === audio) audioRef.current = null; };
+      audio.onended = () => { release(); forget(); };
+      audio.onerror = () => { release(); forget(); setAiError("השמעת הקול נכשלה"); };
+      audioRef.current = { audio, release };
       await audio.play();
-    } catch (error) { setAiError(error instanceof Error ? error.message : "יצירת הקול נכשלה"); }
+    } catch (error) { release(); setAiError(error instanceof Error ? error.message : "יצירת הקול נכשלה"); }
     finally { setIsSpeaking(false); }
   };
 
-  const askAi = async (message = "צור אירוע קצר שמתאים למצב הנוכחי") => {
+  const askAi = async (message = "צור אירוע קצר שמתאים למצב הנוכחי", snapshot: GameState = game) => {
     if (aiStatus !== "ready") { setAiError("צריך לבצע בדיקת חיבור קודם."); return; }
     setIsThinking(true); setAiError("");
     try {
-      const context = `Name: ${game.name}; subject type: ${game.characterKind || "person"}; day: ${day}; stage: ${stage}; health: ${health}; needs: ${JSON.stringify(needs)}; personality: ${personality}; memories: ${game.memories.slice(-4).join(" | ") || "none"}. User says: ${message}`;
+      const snapshotNeeds = { fullness: snapshot.fullness, energy: snapshot.energy, hygiene: snapshot.hygiene, mood: snapshot.mood };
+      const snapshotHealth = clamp((snapshot.fullness + snapshot.energy + snapshot.hygiene + snapshot.mood) / 4 - (snapshot.sick ? 18 : 0));
+      const snapshotPersonality = (Object.entries(snapshot.personality) as Array<[PersonalityId, number]>).sort((a, b) => b[1] - a[1])[0][0];
+      const context = `Name: ${snapshot.name}; subject type: ${snapshot.characterKind || "person"}; day: ${ageDay(snapshot)}; stage: ${currentStage(snapshot)}; health: ${snapshotHealth}; needs: ${JSON.stringify(snapshotNeeds)}; personality: ${snapshotPersonality}; memories: ${snapshot.memories.slice(-4).join(" | ") || "none"}. User says: ${message}`;
       const instruction = "You are the comedy writer and caring game director of a modern Tamagotchi. Return JSON only with one natural Hebrew line (max 18 words), emotion: happy|curious|sleepy|worried, animation: bounce|spin|glow|nap, memory (short Hebrew), and bonus integer 0-5. Be witty, specific to the current need and subject type, and warm. Use one small comic twist; never use canned jokes, shame, fear, sarcasm toward a child, or anything unsafe.";
       let raw = "";
       if (mockAi) {
@@ -834,11 +895,13 @@ export default function Prototype() {
   };
 
   const runKieTask = async (body: unknown) => {
+    const token = jobCancelRef.current;
     const response = await fetch("https://api.kie.ai/api/v1/jobs/createTask", { method: "POST", headers: headersFor("kie"), body: JSON.stringify(body) });
     if (!response.ok) throw new Error(`יצירת משימת KIE נכשלה (${response.status})`);
     const taskId = parseKieTaskId(await response.json());
     for (let attempt = 0; attempt < 75; attempt += 1) {
       await wait(Math.min(12_000, 2_500 + attempt * 350));
+      if (token.cancelled) throw new Error("בוטל");
       const poll = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, { headers: headersFor("kie", false) });
       if (!poll.ok) throw new Error(`בדיקת משימת KIE נכשלה (${poll.status})`);
       const task = parseKieTask(await poll.json());
@@ -852,21 +915,25 @@ export default function Prototype() {
   };
 
   const runFalRawTask = async (model: string, body: unknown) => {
+    const token = jobCancelRef.current;
     const response = await fetch(`https://queue.fal.run/${model.replace(/^\/+/, "")}`, { method: "POST", headers: headersFor("fal"), body: JSON.stringify(body) });
     if (!response.ok) throw new Error(`יצירת משימת fal.ai נכשלה (${response.status})`);
     const submission = parseFalSubmission(await response.json());
     for (let attempt = 0; attempt < 90; attempt += 1) {
       await wait(Math.min(10_000, 2_000 + attempt * 250));
+      if (token.cancelled) throw new Error("בוטל");
       const statusResponse = await fetch(submission.statusUrl, { headers: headersFor("fal", false) });
       if (!statusResponse.ok) throw new Error(`בדיקת משימת fal.ai נכשלה (${statusResponse.status})`);
       const status = await statusResponse.json();
-      if (status.status === "FAILED" || status.status === "ERROR" || (status.status !== "COMPLETED" && status.error)) throw new Error((typeof status.error === "string" ? status.error : status.error?.message) || "משימת fal.ai נכשלה");
-      if (status.status === "COMPLETED") {
-        if (status.error) throw new Error(status.error);
+      const state = String(status.status ?? "");
+      const failure = () => (typeof status.error === "string" ? status.error : status.error?.message) || `משימת fal.ai נכשלה${state ? ` (${state})` : ""}`;
+      if (state === "COMPLETED") {
+        if (status.error) throw new Error(failure());
         const resultResponse = await fetch(submission.responseUrl, { headers: headersFor("fal", false) });
         if (!resultResponse.ok) throw new Error(`קבלת תוצאת fal.ai נכשלה (${resultResponse.status})`);
         return resultResponse.json();
       }
+      if (state !== "IN_QUEUE" && state !== "IN_PROGRESS") throw new Error(failure());
     }
     throw new Error("משימת fal.ai לא הושלמה בזמן");
   };
@@ -922,6 +989,7 @@ export default function Prototype() {
   );
 
   const stylizePhoto = async (fullSet = false) => {
+    const revision = game.visualRevision;
     const sourcePhoto = game.sourcePhoto || game.photo;
     if (!sourcePhoto) { setAiError("קודם צריך לבחור תמונה."); return; }
     if (!ai.imageConsent) { setAiError("צריך לאשר במפורש את שליחת התמונה לספק ה־AI."); return; }
@@ -929,18 +997,20 @@ export default function Prototype() {
     if (!imageModels.length) { setAiError("החיבור תקין, אבל אין כרגע מודל תמונה תואם בחשבון או אצל הספק שנבחר."); return; }
     setIsStyling(true); setAiError("");
     try {
-      const oldKeys = (Object.keys(game.animationSlots) as CompanionMotion[]).map((motion) => animationStorageKey(game.visualRevision, motion));
-      void removeClips(oldKeys);
       let master: Blob | null = null;
-      if (fullSet && game.aiCharacter) master = await loadMedia(characterStorageKey(game.visualRevision, "master"));
+      if (fullSet && game.aiCharacter) master = await loadMedia(characterStorageKey(revision, "master"));
       if (!master) {
         setCharacterProgress(fullSet ? "1 מתוך 4 · יוצרים דמות מאסטר" : "יוצרים דמות מאסטר");
         master = await requestCharacterImage([sourcePhoto], "master");
-        await saveMedia(characterStorageKey(game.visualRevision, "master"), master);
-        await removeMedia(["sunrise", "midnight", "classic"].map((theme) => characterStorageKey(game.visualRevision, theme as ThemeId)));
-        setGame((current) => ({ ...current, aiCharacter: true, characterVariants: {}, animationSlots: {} }));
+        const masterKey = characterStorageKey(revision, "master");
+        await saveMedia(masterKey, master);
+        if (revisionRef.current !== revision) { void removeMedia([masterKey]).catch(() => {}); return; }
+        await removeMedia(["sunrise", "midnight", "classic"].map((theme) => characterStorageKey(revision, theme as ThemeId)));
+        const oldKeys = (Object.keys(game.animationSlots) as CompanionMotion[]).map((motion) => animationStorageKey(revision, motion));
+        void removeClips(oldKeys).catch(() => {});
+        setGame((current) => current.visualRevision !== revision ? current : ({ ...current, aiCharacter: true, characterVariants: {}, animationSlots: {} }));
+        setClipUrls({});
       }
-      setClipUrls({});
       if (fullSet) {
         const masterReference = await blobToDataUrl(master);
         const variants: ThemeId[] = ["sunrise", "midnight", "classic"];
@@ -949,8 +1019,10 @@ export default function Prototype() {
           setCharacterProgress(`${index + 2} מתוך 4 · מתאימים לחדר ${themes.find((item) => item.id === theme)?.title}`);
           const roomReference = await urlToDataUrl(themes.find((item) => item.id === theme)!.image);
           const variant = await requestCharacterImage([masterReference, roomReference], theme);
-          await saveMedia(characterStorageKey(game.visualRevision, theme), variant);
-          setGame((current) => ({ ...current, aiCharacter: true, characterVariants: { ...current.characterVariants, [theme]: true } }));
+          const variantKey = characterStorageKey(revision, theme);
+          await saveMedia(variantKey, variant);
+          if (revisionRef.current !== revision) { void removeMedia([variantKey]).catch(() => {}); return; }
+          setGame((current) => current.visualRevision !== revision ? current : ({ ...current, aiCharacter: true, characterVariants: { ...current.characterVariants, [theme]: true } }));
         }
         say("שלושה חדרים, אותה דמות. סוף־סוף מחלקת התאורה עשתה משהו.");
       } else say("זאת דמות המאסטר. אותה זהות, הרבה פחות תמונת פספורט.");
@@ -960,6 +1032,7 @@ export default function Prototype() {
   };
 
   const generateRoomUpgrade = async () => {
+    const revision = game.visualRevision;
     const set = decorSetKey(game.decorations);
     if (!set) { setAiError("עדיין אין קישוטים בבית. קונים בתיק ואז חוזרים לכאן."); return; }
     if (mediaStatus !== "ready") { setAiError("צריך להפעיל קודם את ספק התמונה."); return; }
@@ -973,9 +1046,11 @@ export default function Prototype() {
       const reference = await urlToDataUrl(themes.find((item) => item.id === theme)!.image);
       const owned = (Object.keys(decorMeta) as DecorKey[]).filter((key) => game.decorations[key]);
       const room = await requestStyledImage([reference], buildRoomUpgradePrompt(theme, owned), { transparent: false });
-      await saveMedia(roomStorageKey(theme, set), room);
-      if (previous !== undefined && previous !== set) void removeMedia([roomStorageKey(theme, previous)]);
-      setGame((current) => ({ ...current, aiRooms: { ...current.aiRooms, [theme]: set }, memories: [...current.memories, `החדר שופץ עם ${owned.length} קישוטים`].slice(-12) }));
+      const roomKey = roomStorageKey(theme, set);
+      await saveMedia(roomKey, room);
+      if (revisionRef.current !== revision) { void removeMedia([roomKey]).catch(() => {}); return; }
+      if (previous !== undefined && previous !== set) void removeMedia([roomStorageKey(theme, previous)]).catch(() => {});
+      setGame((current) => current.visualRevision !== revision ? current : ({ ...current, aiRooms: { ...current.aiRooms, [theme]: set }, memories: [...current.memories, `החדר שופץ עם ${owned.length} קישוטים`].slice(-12) }));
       say("סידרתי הכול בחדר, כולל הפינות שאף אחד לא מסתכל עליהן. אפשר להזמין אורחים.");
       showEffect("heart");
     } catch (error) { setAiError(error instanceof Error ? error.message : "שילוב הקישוטים בחדר נכשל"); }
@@ -984,6 +1059,7 @@ export default function Prototype() {
 
   const requestVideo = async (referenceDataUrl: string, prompt: string, duration = 5) => {
     if (mockAi) return null;
+    const token = jobCancelRef.current;
     if (ai.videoProvider === "kie") {
       const frameUrl = await uploadToKie(referenceDataUrl);
       return downloadMedia(await runKieTask(buildKieVideoTask(ai.videoModel, prompt, frameUrl, duration)));
@@ -995,6 +1071,7 @@ export default function Prototype() {
       let job = await create.json();
       for (let attempt = 0; attempt < 60 && !["completed", "failed"].includes(job.status); attempt += 1) {
         await wait(7_000);
+        if (token.cancelled) throw new Error("בוטל");
         const poll = await fetch(`https://api.openai.com/v1/videos/${job.id}`, { headers: headersFor("openai", false) });
         if (!poll.ok) throw new Error(`בדיקת וידאו ב־OpenAI נכשלה (${poll.status})`);
         job = await poll.json();
@@ -1018,12 +1095,13 @@ export default function Prototype() {
     let job = await response.json();
     for (let attempt = 0; attempt < 60 && !["completed", "failed", "cancelled", "expired"].includes(job.status); attempt += 1) {
       await wait(7_000);
+      if (token.cancelled) throw new Error("בוטל");
       const pollUrl = job.polling_url?.startsWith("http") ? job.polling_url : `${videoBase}/videos/${job.id}`;
       const poll = await fetch(pollUrl, { headers: headersFor("openrouter", false) });
       if (!poll.ok) throw new Error(`בדיקת הווידאו נכשלה (${poll.status})`);
       job = await poll.json();
     }
-    if (job.status !== "completed") throw new Error(job.error || "יצירת הווידאו לא הושלמה בזמן");
+    if (job.status !== "completed") throw new Error(job.error?.message ?? (typeof job.error === "string" ? job.error : "יצירת הווידאו לא הושלמה בזמן"));
     const contentUrl = job.unsigned_urls?.[0] || job.content_url || job.video_url || `${videoBase}/videos/${job.id}/content`;
     const content = await fetch(contentUrl, contentUrl.startsWith(videoBase) ? { headers: headersFor("openrouter", false) } : undefined);
     if (!content.ok) throw new Error(`הורדת הווידאו נכשלה (${content.status})`);
@@ -1031,6 +1109,7 @@ export default function Prototype() {
   };
 
   const generateCharacterAnimation = async (companionMotion: CompanionMotion) => {
+    const revision = game.visualRevision;
     const animationVisual = characterUrls.master ?? currentCharacterUrl;
     if (!animationVisual) { setAiError("צריך קודם לבחור או ליצור דמות."); return; }
     if (!ai.imageConsent) { setAiError("צריך לאשר את שליחת התמונה לספק לפני יצירת אנימציה."); return; }
@@ -1041,11 +1120,13 @@ export default function Prototype() {
       const request = buildAnimationRequest({ model: ai.videoModel, photoDataUrl: referenceDataUrl, kind: game.characterKind, name: game.name, motion: companionMotion });
       const clip = await requestVideo(referenceDataUrl, request.prompt, motionMeta[companionMotion].duration);
       if (clip) {
-        await saveClip(animationStorageKey(game.visualRevision, companionMotion), clip);
+        const clipKey = animationStorageKey(revision, companionMotion);
+        await saveClip(clipKey, clip);
+        if (revisionRef.current !== revision) { void removeClips([clipKey]).catch(() => {}); return; }
         const url = URL.createObjectURL(clip);
         setClipUrls((current) => { const previous = current[companionMotion]; if (previous) URL.revokeObjectURL(previous); return { ...current, [companionMotion]: url }; });
       }
-      setGame((current) => ({ ...current, animationSlots: { ...current.animationSlots, [companionMotion]: true }, memories: [...current.memories, `נוצרה אנימציית ${motionMeta[companionMotion].title}`].slice(-12) }));
+      setGame((current) => current.visualRevision !== revision ? current : ({ ...current, animationSlots: { ...current.animationSlots, [companionMotion]: true }, memories: [...current.memories, `נוצרה אנימציית ${motionMeta[companionMotion].title}`].slice(-12) }));
       playMotion(companionMotion, 5200); say(`${motionMeta[companionMotion].title} מוכנה. סוף־סוף יש לי כוריאוגרפיה.`); showEffect("heart");
     } catch (error) { setAiError(error instanceof Error ? error.message : "יצירת האנימציה נכשלה"); }
     finally { setIsAnimating(null); }
@@ -1073,17 +1154,20 @@ export default function Prototype() {
       ...characterVisuals.map((visual) => characterStorageKey(game.visualRevision, visual)),
       ...(Object.keys(game.aiRooms) as ThemeId[]).map((theme) => roomStorageKey(theme, game.aiRooms[theme] ?? "")),
     ];
-    void removeMedia(keys);
+    jobCancelRef.current.cancelled = true; jobCancelRef.current = { cancelled: false };
+    void removeMedia(keys).catch(() => {});
     setClipUrls({}); setCharacterUrls({}); setRoomUrls({}); setActiveMotion("idle");
-    setGame({ ...defaultState, onboarded: false, birthAt: Date.now(), lastSeen: Date.now(), visualRevision: Date.now() });
-    setOverlay(null); setScreen("home");
+    const revision = Date.now();
+    revisionRef.current = revision;
+    setGame({ ...defaultState, onboarded: false, birthAt: Date.now(), lastSeen: Date.now(), visualRevision: revision });
+    closeAllOverlays(); setScreen("home");
   };
 
   return (
     <div className={`companion-app theme-${game.theme}`} dir="rtl">
       <MobileScroll key={screen} className="app-screen"><main className="game-page">
-        {screen === "home" ? <HomeScreen game={game} characterUrl={currentCharacterUrl} health={health} stage={stage} evolution={evolution} day={day} needs={needs} lowestNeed={lowestNeed[0]} callNeed={callNeed} currentRoom={currentRoom} roomUrl={currentRoomUrl} bakedDecor={bakedDecor} reaction={reaction} reactionId={reactionId} wanderX={wanderX} effect={effect} isNight={isNight} aiReady={voiceStatus === "ready"} isSpeaking={isSpeaking} activeMotion={activeMotion} clipUrl={clipUrls[activeMotion] || clipUrls.idle} onSettings={() => setOverlay("settings")} onSpeak={() => void speak()} onAction={performAction} onUseMedicine={() => useItem("medicine")} /> : null}
-        {screen === "arcade" ? <ArcadeScreen coins={game.coins} starGame={starGame} guessGame={guessGame} onStartStars={() => setStarGame({ active: true, time: 20, score: 0, lane: 1, target: 1, targetId: Date.now() })} onCatch={catchLane} onStartGuess={startGuess} onGuess={makeGuess} /> : null}
+        {screen === "home" ? <HomeScreen game={game} characterUrl={currentCharacterUrl} health={health} stage={stage} evolution={evolution} day={day} needs={needs} lowestNeed={lowestNeed[0]} callNeed={callNeed} currentRoom={currentRoom} roomUrl={currentRoomUrl} bakedDecor={bakedDecor} reaction={reaction} reactionId={reactionId} wanderX={wanderX} effect={effect} isNight={isNight} aiReady={voiceStatus === "ready"} isSpeaking={isSpeaking} activeMotion={activeMotion} clipUrl={clipUrls[activeMotion] || clipUrls.idle} persistFailed={persistFailed} onSettings={() => pushOverlay("settings")} onSpeak={() => void speak()} onAction={performAction} onUseMedicine={() => useItem("medicine")} /> : null}
+        {screen === "arcade" ? <ArcadeScreen coins={game.coins} starGame={starGame} guessGame={guessGame} onStartStars={startStarGame} onCatch={catchLane} onStartGuess={startGuess} onGuess={makeGuess} /> : null}
         {screen === "journey" ? <JourneyScreen game={game} stage={stage} evolution={evolution} day={day} personality={personality} careGrade={careGrade} onClaim={claimQuest} onClaimMilestone={claimMilestone} /> : null}
         {screen === "bag" ? <BagScreen game={game} onUse={useItem} onBuy={buyItem} onBuyDecor={buyDecor} /> : null}
       </main></MobileScroll>
@@ -1094,17 +1178,17 @@ export default function Prototype() {
       <input ref={fileRef} className="file-input" type="file" accept="image/*" onChange={handlePhoto} />
 
       <AnimatePresence>
-        {overlay === "settings" ? <FullPage title="הגדרות" subtitle="זהות, חדר ויכולות — הכול נשמר במכשיר" onBack={() => setOverlay(null)}><div className="form-stack">
+        {overlay === "settings" ? <FullPage title="הגדרות" subtitle="זהות, חדר ויכולות — הכול נשמר במכשיר" onBack={popOverlay}><div className="form-stack">
           <label htmlFor="friend-name">שם הדמות</label><KeyboardInput id="friend-name" className="text-field" value={game.name} onChange={(event) => setGame((current) => ({ ...current, name: event.target.value.slice(0, 18) }))} />
           <div className="section-title">מי הדמות?</div><div className="compact-kind-row">{(Object.entries(kindLabels) as Array<[Exclude<CharacterKind, "">, (typeof kindLabels)[Exclude<CharacterKind, "">]]>).map(([kind, meta]) => { const Icon = meta.icon; return <button key={kind} className={game.characterKind === kind ? "selected" : ""} onClick={() => setGame((current) => ({ ...current, characterKind: kind }))}><Icon /><span>{meta.title}</span></button>; })}</div>
           <div className="section-title">סגנון החדר</div><Carousel ariaLabel="בחירת סגנון" className="theme-carousel" contentClassName="theme-track">{themes.map((theme) => <button className={`theme-card ${game.theme === theme.id ? "selected" : ""}`} key={theme.id} onClick={() => setGame((current) => ({ ...current, theme: theme.id }))}><img src={theme.image} alt="" draggable={false} /><span><strong>{theme.title}</strong><small>{theme.note}</small></span>{game.theme === theme.id ? <i><CheckIcon /></i> : null}</button>)}</Carousel>
           <button className="wide-button" onClick={() => fileRef.current?.click()}><CameraIcon />החלפת תמונת הדמות</button>
           <button className="wide-button" onClick={() => void toggleNotifications()}><BellIcon />{game.notificationsEnabled ? "התראות פעילות" : "הפעלת התראות טיפול"}</button>
           <div className="small-note">תזכורות המערכת תלויות במכשיר שמשאיר את האפליקציה חיה ברקע, ואנדרואיד אוהב לכבות דברים בשקט — אז לפעמים הן פשוט לא יגיעו. בלי קשר: בכל חזרה למשחק מחכה סיכום מלא של מה שקרה בזמן שלא הייתם.</div>
-          <button className="wide-button" onClick={() => setOverlay("guide")}><InfoCircledIcon />איך המשחק עובד</button>
-          <button className="wide-button accent" onClick={() => { mobileKeyboard.hide(); setOverlay("ai"); }}><MagicWandIcon />AI ואנימציות</button><button className="wide-button danger" onClick={resetGame}><TrashIcon />יצירת דמות חדשה</button>
+          <button className="wide-button" onClick={() => pushOverlay("guide")}><InfoCircledIcon />איך המשחק עובד</button>
+          <button className="wide-button accent" onClick={() => { mobileKeyboard.hide(); pushOverlay("ai"); }}><MagicWandIcon />AI ואנימציות</button><button className="wide-button danger" onClick={resetGame}><TrashIcon />יצירת דמות חדשה</button>
         </div></FullPage> : null}
-        {overlay === "guide" ? <FullPage title="איך משחקים" subtitle="לולאה אחת פשוטה; כל מסך עושה דבר אחד" onBack={() => { setGame((current) => ({ ...current, guideSeen: true })); setOverlay(null); }}><div className="game-guide">
+        {overlay === "guide" ? <FullPage title="איך משחקים" subtitle="לולאה אחת פשוטה; כל מסך עושה דבר אחד" onBack={() => { setGame((current) => ({ ...current, guideSeen: true })); popOverlay(); }}><div className="game-guide">
           <div className="guide-loop"><strong>מטפלים</strong><ChevronLeftIcon /><strong>משחקים</strong><ChevronLeftIcon /><strong>מתקדמים</strong><ChevronLeftIcon /><strong>משתמשים</strong></div>
           <article><HomeIcon /><div><strong>טיפול</strong><span>זה הבית. רואים את הדמות ומטפלים רק במה שצריך עכשיו.</span></div></article>
           <article><RocketIcon /><div><strong>משחקים</strong><span>מעלים שמחה ומרוויחים מטבעות.</span></div></article>
@@ -1112,7 +1196,7 @@ export default function Prototype() {
           <article><BackpackIcon /><div><strong>פריטים</strong><span>קונים ומשתמשים באוכל, צעצועים וטיפול.</span></div></article>
           <div className="time-explainer"><ClockIcon /><span><strong>גם כשסוגרים את המשחק הזמן ממשיך.</strong> המדדים ודירוג הטיפול יורדים בהדרגה, אבל הדמות לא מתה ותמיד אפשר להתאושש.</span></div>
         </div></FullPage> : null}
-        {overlay === "ai" ? <FullPage title="AI" subtitle="בוחרים ספק ומודל נפרד לכל יכולת" onBack={() => setOverlay(null)}><div className="form-stack ai-panel">
+        {overlay === "ai" ? <FullPage title="AI" subtitle="בוחרים ספק ומודל נפרד לכל יכולת" onBack={popOverlay}><div className="form-stack ai-panel">
           <div className="ai-step-title"><span>1</span><div><strong>המוח של הדמות</strong><small>טקסט, הומור, זיכרונות וקול.</small></div></div>
           <div className="media-provider-grid" role="group" aria-label="בחירת ספק שפה">{(Object.entries(mediaProviderMeta) as Array<[MediaProvider,(typeof mediaProviderMeta)[MediaProvider]]>).map(([provider, meta]) => <button key={provider} className={ai.provider === provider ? "active" : ""} onClick={() => changeProvider(provider)}><span>{meta.short}</span><strong>{meta.title}</strong><small>שפה</small></button>)}</div>
           <div className={`connection-card ${aiStatus}`}><div className={`or-logo ${ai.provider}`}>{mediaProviderMeta[ai.provider as MediaProvider].short}</div><div><strong>{mediaProviderMeta[ai.provider as MediaProvider].title}</strong><span>{aiStatus === "ready" ? "מסלול השפה מוכן" : aiStatus === "testing" ? "בודק חיבור…" : "מפתח אישי · נשמר עד סגירת האפליקציה"}</span></div><i /></div>
@@ -1154,7 +1238,7 @@ export default function Prototype() {
           <details className="advanced-ai"><summary>מודלים והגדרות מתקדמות</summary><div><label>מודל שפה · {mediaProviderMeta[ai.provider as MediaProvider].title}</label><KeyboardInput id="text-model" className="text-field ltr" value={ai.textModel} onChange={(event) => setAi((current) => ({ ...current, textModel: event.target.value }))} /><label>מודל קול · {mediaProviderMeta[ai.voiceProvider].title}</label>{voiceModels.length > 1 ? <select aria-label="מודל קול" className="text-field ltr" value={ai.voiceModel} onChange={(event) => setAi((current) => ({ ...current, voiceModel: event.target.value }))}>{voiceModels.map((model) => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</select> : <KeyboardInput aria-label="מודל קול" className="text-field ltr" value={ai.voiceModel} onChange={(event) => setAi((current) => ({ ...current, voiceModel: event.target.value }))} />}<label>מודל תמונה · {mediaProviderMeta[ai.imageProvider].title}</label>{imageModels.length > 1 ? <select aria-label="מודל תמונה" className="text-field ltr" value={ai.imageModel} onChange={(event) => setAi((current) => ({ ...current, imageModel: event.target.value }))}>{imageModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select> : <KeyboardInput aria-label="מודל תמונה" className="text-field ltr" value={ai.imageModel} onChange={(event) => setAi((current) => ({ ...current, imageModel: event.target.value }))} />}<label>מודל וידאו · {mediaProviderMeta[ai.videoProvider].title}</label>{videoModels.length > 1 ? <select aria-label="מודל וידאו" className="text-field ltr" value={ai.videoModel} onChange={(event) => setAi((current) => ({ ...current, videoModel: event.target.value }))}>{videoModels.map((model) => <option value={model.id} key={model.id}>{model.name || model.id}</option>)}</select> : <KeyboardInput aria-label="מודל וידאו" className="text-field ltr" value={ai.videoModel} onChange={(event) => setAi((current) => ({ ...current, videoModel: event.target.value }))} />}<small className="small-note">מזהי ברירת המחדל נבחרו לפי תיעוד הספקים. שינוי ידני מיועד למודל בעל אותה סכמת API.</small></div></details>
           {aiError ? <div className="error-card"><ExclamationTriangleIcon />{aiError}</div> : null}
         </div></FullPage> : null}
-        {overlay === "event" ? <motion.div className="event-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><motion.div className="event-card" initial={{ scale: .82, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: .9, opacity: 0 }}><div className="event-star"><StarFilledIcon /></div><small>אירוע חדש</small><h2>{eventText}</h2><button className="wide-button accent" onClick={() => setOverlay(null)}>ממשיכים</button></motion.div></motion.div> : null}
+        {overlay === "event" ? <motion.div className="event-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><motion.div className="event-card" initial={{ scale: .82, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: .9, opacity: 0 }}><div className="event-star"><StarFilledIcon /></div><small>אירוע חדש</small><h2>{eventText}</h2><button className="wide-button accent" onClick={popOverlay}>ממשיכים</button></motion.div></motion.div> : null}
       </AnimatePresence>
 
       {!game.onboarded ? <Onboarding game={game} onKind={(characterKind: CharacterKind) => setGame((current) => ({ ...current, characterKind }))} onName={(name: string) => setGame((current) => ({ ...current, name }))} onTheme={(theme: ThemeId) => setGame((current) => ({ ...current, theme }))} onPhoto={() => fileRef.current?.click()} onDone={() => { setGame((current) => ({ ...current, onboarded: true, birthAt: current.xp ? current.birthAt : Date.now(), lastSeen: Date.now() })); say("החדר מוכן. החוקים פשוטים: מטפלים, משחקים ולא מאמינים לכל מה שאני אומר."); window.requestAnimationFrame(() => { const scroll = document.querySelector<HTMLElement>(".app-screen .mobile-scroll"); if (scroll) scroll.scrollTop = 0; }); }} /> : null}
@@ -1162,7 +1246,7 @@ export default function Prototype() {
   );
 }
 
-function HomeScreen({ game, characterUrl, health, stage, evolution, day, needs, lowestNeed, callNeed, currentRoom, roomUrl, bakedDecor, reaction, reactionId, wanderX, effect, isNight, aiReady, isSpeaking, activeMotion, clipUrl, onSettings, onSpeak, onAction, onUseMedicine }: any) {
+function HomeScreen({ game, characterUrl, health, stage, evolution, day, needs, lowestNeed, callNeed, currentRoom, roomUrl, bakedDecor, reaction, reactionId, wanderX, effect, isNight, aiReady, isSpeaking, activeMotion, clipUrl, persistFailed, onSettings, onSpeak, onAction, onUseMedicine }: any) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [speechOpen, setSpeechOpen] = useState(true);
   const statusPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -1190,12 +1274,14 @@ function HomeScreen({ game, characterUrl, health, stage, evolution, day, needs, 
     pet: { feed: "אוכל", sleep: "שינה", clean: "רחצה", play: "משחק" },
   };
   const kind = (game.characterKind || "person") as Exclude<CharacterKind, "">;
-  const statusLine = game.sick ? "לא מרגיש טוב · צריך תרופה" : needs.fullness < 36 ? "רעב · הבטן פתחה קבוצת מחאה" : needs.energy < 36 ? "עייף · פועל על כבוד בלבד" : needs.hygiene < 36 ? "צריך ניקיון · הראיות מצטברות" : needs.mood < 36 ? "צריך משחק · הוראה מקצועית" : "הכול טוב · חשוד, אבל טוב";
+  const callLines: Record<ActionKey, string> = { feed: "רעב · הבטן פתחה קבוצת מחאה", sleep: "עייף · פועל על כבוד בלבד", clean: "צריך ניקיון · הראיות מצטברות", play: "צריך משחק · הוראה מקצועית" };
+  const statusLine = game.sick ? "לא מרגיש טוב · צריך תרופה" : callNeed ? callLines[callNeed as ActionKey] : "הכול טוב · חשוד, אבל טוב";
   const StatusIcon = game.sick ? HeartFilledIcon : callNeed && callNeed !== "medicine" ? actionsMeta[callNeed as ActionKey].icon : FaceIcon;
   const staticMotion = activeMotion === "play" ? { y: [0,-18,0,-8,0], rotate: [0,-4,5,0], scale: [1,1.04,1] } : activeMotion === "eat" ? { y: [0,3,0], rotate: [0,-2,2,0], scale: [1,1.05,1] } : activeMotion === "celebrate" ? { y: [0,-14,0], rotate: [0,8,-8,0], scale: [1,1.08,1] } : { y: game.sleeping ? 18 : [0,-6,0], rotate: game.sleeping ? 0 : [-1,1,-1], scale: 1 };
   return <section className="home-screen">
     <img className="room-background" src={roomUrl ?? currentRoom.image} alt="" draggable={false} /><div className={`room-vignette ${isNight ? "night" : ""}`} />
     <header className="game-header"><button className="round-button" aria-label="הגדרות" onClick={onSettings}><GearIcon /></button><div className="friend-title"><strong>{game.name}</strong><span>{stageMeta[stage as StageId].title} · יום {day}</span></div><div className="coin-pill"><TokensIcon /><strong>{game.coins}</strong></div></header>
+    {persistFailed ? <div className="care-alert" role="status"><ExclamationTriangleIcon /><span><strong>המכשיר לא מצליח לשמור את ההתקדמות</strong><small>המשחק ימשיך מהזיכרון עד לסגירת האפליקציה</small></span></div> : null}
     <div className="status-popover" ref={statusPopoverRef}>
       <button className={`vital-summary ${callNeed ? "needs-care" : ""}`} aria-expanded={detailsOpen} onClick={() => setDetailsOpen((open) => !open)}><span><StatusIcon /></span><div><strong>{statusLine}</strong><small>טיפול {whole(health)}% · לחצו למדדים</small></div><ChevronLeftIcon /></button>
       <AnimatePresence>{detailsOpen ? <motion.div className="status-panel" initial={{ opacity: 0, y: -8, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -7, scale: .98 }}>
@@ -1226,7 +1312,7 @@ function ArcadeScreen({ coins, starGame, guessGame, onStartStars, onCatch, onSta
   return <section className="content-screen arcade-screen"><ScreenHeader eyebrow="מרוויחים מטבעות" title="המשחקייה" trailing={<div className="coin-pill"><TokensIcon /><strong>{coins}</strong></div>} />
     <div className="arcade-hero"><StarFilledIcon /><div><strong>משחקים קצרים, תגמול אמיתי</strong><span>המטבעות פותחים אוכל, צעצועים וטיפול.</span></div></div>
     <article className="game-card star-card"><div className="game-card-head"><span><StarFilledIcon /></span><div><h2>תופסי הכוכבים</h2><p>20 שניות · לחצו על המסלול הנכון</p></div>{!starGame.active ? <button onClick={onStartStars}>שחק</button> : null}</div>{starGame.active ? <div className="star-arena"><div className="scorebar"><strong>{starGame.score} כוכבים</strong><span>{starGame.time} שנ׳</span></div><div className="lanes">{[0,1,2].map((lane) => <button key={lane} aria-label={`מסלול ${lane + 1}`} onClick={() => onCatch(lane)}>{starGame.target === lane ? <motion.i key={starGame.targetId} initial={{ y: -110, rotate: 0 }} animate={{ y: 82, rotate: 180 }} transition={{ duration: .85, ease: "linear" }}><StarFilledIcon /></motion.i> : null}<span className={starGame.lane === lane ? "player active" : "player"}><FaceIcon /></span></button>)}</div></div> : <div className="game-preview stars-preview"><StarFilledIcon /><StarFilledIcon /><StarFilledIcon /></div>}</article>
-    <article className="game-card guess-card"><div className="game-card-head"><span><ChevronLeftIcon /></span><div><h2>לאן קופצים?</h2><p>בהשראת משחק הכיוון הקלאסי · 5 סיבובים</p></div>{!guessGame.active && guessGame.round === 0 ? <button onClick={onStartGuess}>שחק</button> : null}</div>{guessGame.active || guessGame.round > 0 ? <div className="guess-arena"><strong>{guessGame.reveal || "לאן הדמות תקפוץ?"}</strong><motion.div className="guess-pet" animate={{ x: guessGame.answer === "left" ? -70 : guessGame.answer === "right" ? 70 : 0 }}><motion.span className="guess-tell" key={guessGame.round} animate={{ x: guessGame.answer ? 0 : [0, guessGame.hint === "left" ? -16 : 16, 0] }} transition={{ duration: .6, ease: "easeInOut" }}><FaceIcon /></motion.span></motion.div><div><button disabled={!guessGame.active || !!guessGame.answer} onClick={() => onGuess("right")}><ChevronRightIcon />ימינה</button><span>{guessGame.score}/{guessGame.round}</span><button disabled={!guessGame.active || !!guessGame.answer} onClick={() => onGuess("left")}>שמאלה<ChevronLeftIcon /></button></div><small className="guess-tip">טיפ: הדמות מציצה לכיוון שבא לה לקפוץ… בדרך כלל.</small>{!guessGame.active && guessGame.round >= 5 ? <button className="again-button" onClick={onStartGuess}>עוד משחק</button> : null}</div> : <div className="game-preview direction-preview"><ChevronRightIcon /><FaceIcon /><ChevronLeftIcon /></div>}</article>
+    <article className="game-card guess-card"><div className="game-card-head"><span><ChevronLeftIcon /></span><div><h2>לאן קופצים?</h2><p>בהשראת משחק הכיוון הקלאסי · 5 סיבובים</p></div>{!guessGame.active && guessGame.round === 0 ? <button onClick={onStartGuess}>שחק</button> : null}</div>{guessGame.active || guessGame.round > 0 ? <div className="guess-arena"><strong>{guessGame.reveal || "לאן הדמות תקפוץ?"}</strong><motion.div className="guess-pet" animate={{ x: guessGame.answer === "left" ? -70 : guessGame.answer === "right" ? 70 : 0 }}><motion.span className="guess-tell" key={guessGame.round} animate={{ x: guessGame.answer ? 0 : [0, guessGame.hint === "left" ? -16 : 16, 0] }} transition={{ duration: .6, ease: "easeInOut" }}><FaceIcon /></motion.span></motion.div><div><button disabled={!guessGame.active || !!guessGame.answer} onClick={() => onGuess("right")}><ChevronRightIcon />ימינה</button><span>{guessGame.score}/{guessGame.round}</span><button disabled={!guessGame.active || !!guessGame.answer} onClick={() => onGuess("left")}>שמאלה<ChevronLeftIcon /></button></div><small className="guess-tip">{guessGame.active ? `רמז: ${guessGame.tellLabel} (${guessGame.tellPhrase})` : "טיפ: הדמות מציצה לכיוון שבא לה לקפוץ… בדרך כלל."}</small>{!guessGame.active && guessGame.round >= 5 ? <button className="again-button" onClick={onStartGuess}>עוד משחק</button> : null}</div> : <div className="game-preview direction-preview"><ChevronRightIcon /><FaceIcon /><ChevronLeftIcon /></div>}</article>
   </section>;
 }
 

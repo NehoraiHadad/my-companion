@@ -5,6 +5,7 @@ import {
   HOUR,
   absenceMessage,
   applyElapsed,
+  arcadePayoutScale,
   buyDecoration,
   claimStreakMilestone,
   currentStage,
@@ -35,6 +36,7 @@ test("a fresh install has no forced name, animal, or completed onboarding", () =
   assert.equal(defaultState.name, "");
   assert.equal(defaultState.characterKind, "");
   assert.equal(defaultState.photo, undefined);
+  assert.equal(defaultState.arcadePlays, 0);
   assert.deepEqual(defaultState.aiRooms, {});
 });
 
@@ -48,7 +50,8 @@ test("care score visibly declines with elapsed time even before a crisis", () =>
 test("absence recap changes with time and stays warm", () => {
   assert.match(absenceMessage("נועה", 20), /20 דקות/);
   assert.match(absenceMessage("נועה", 180), /3 שעות/);
-  assert.match(absenceMessage("נועה", 24 * 60), /התגעגע/);
+  assert.match(absenceMessage("נועה", 24 * 60), /געגוע/);
+  for (const minutes of [20, 180, 24 * 60]) assert.doesNotMatch(absenceMessage("נועה", minutes), /(^|\s)(התגעגע|ניהל|שמר|העמיד)(\s|$)/);
   assert.doesNotMatch(absenceMessage("נועה", 24 * 60), /אשמתך|נטשת/);
 });
 
@@ -157,12 +160,12 @@ test("care reward has diminishing returns but never becomes zero", () => {
   const urgent = performCareAction(stateAt(now, { fullness: 5 }), "feed", now);
   const alreadyFull = performCareAction(stateAt(now, { fullness: 100 }), "feed", now);
   assert.ok(urgent.xp > alreadyFull.xp);
-  assert.ok(alreadyFull.xp >= 3);
+  assert.ok(alreadyFull.xp >= 4);
 });
 
 test("every sixth care action grants the room discovery bonus", () => {
   const now = Date.now();
-  const result = performCareAction(stateAt(now, { actions: 5, coins: 10 }), "play", now);
+  const result = performCareAction(stateAt(now, { actions: 5, coins: 10, mood: 30 }), "play", now);
   assert.equal(result.actions, 6);
   assert.equal(result.coins, 22);
 });
@@ -241,6 +244,53 @@ test("sickness deepens awake decay of energy and mood only", () => {
   assert.ok(ill.mood < healthy.mood);
   assert.equal(ill.fullness, healthy.fullness);
   assert.equal(ill.hygiene, healthy.hygiene);
+});
+
+test("a clock set back only rewinds lastSeen and never freezes the game", () => {
+  const now = new Date(2026, 7, 24, 10).getTime();
+  const base = stateAt(now);
+  const rewound = applyElapsed(base, base.lastSeen - HOUR);
+  assert.equal(rewound.lastSeen, now - HOUR);
+  assert.equal(rewound.fullness, base.fullness);
+  assert.equal(rewound.energy, base.energy);
+  assert.equal(rewound.hygiene, base.hygiene);
+  assert.equal(rewound.mood, base.mood);
+  assert.equal(rewound.streak, base.streak);
+  const resumed = applyElapsed(rewound, now + HOUR);
+  assert.equal(resumed.lastSeen, now + HOUR);
+  assert.ok(resumed.fullness < base.fullness);
+});
+
+test("cleaning never cures sickness and medicine is the only cure", () => {
+  const now = new Date(2026, 7, 24, 10).getTime();
+  const ill = stateAt(now, { sick: true, hygiene: 8, poop: 3 });
+  const once = performCareAction(ill, "clean", now);
+  const twice = performCareAction(once, "clean", now);
+  assert.equal(once.sick, true);
+  assert.equal(twice.sick, true);
+  assert.equal(useInventoryItem(twice, "medicine", now).sick, false);
+  assert.equal(useInventoryItem(twice, "soap", now).sick, true);
+});
+
+test("arcade payouts shrink after three daily runs and reset with the day", () => {
+  const yesterday = new Date(2026, 7, 23, 20).getTime();
+  const today = new Date(2026, 7, 24, 8).getTime();
+  assert.equal(arcadePayoutScale(0), 1);
+  assert.equal(arcadePayoutScale(2), 1);
+  assert.equal(arcadePayoutScale(3), 0.25);
+  assert.equal(arcadePayoutScale(9), 0.25);
+  assert.equal(applyElapsed(stateAt(yesterday, { arcadePlays: 5 }), today).arcadePlays, 0);
+  assert.equal(applyElapsed(stateAt(today, { arcadePlays: 5 }), today + HOUR).arcadePlays, 5);
+});
+
+test("a diligent daily session keeps care score in the top grade", () => {
+  const yesterday = new Date(2026, 7, 23, 9).getTime();
+  const today = new Date(2026, 7, 24, 9).getTime();
+  let game = applyElapsed(stateAt(yesterday, { fullness: 88, energy: 90, hygiene: 85, mood: 80 }), today);
+  for (const action of ["feed", "clean", "play", "sleep", "feed", "play", "clean", "feed"]) {
+    game = performCareAction(game, action, today + game.actions * 1000);
+  }
+  assert.ok(game.careScore >= 60);
 });
 
 test("naps follow the day and night rhythm", () => {
