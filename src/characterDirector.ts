@@ -1,4 +1,4 @@
-import type { CharacterKind, ThemeId } from "./gameEngine";
+import type { CharacterKind, DecorKey, ThemeId } from "./gameEngine";
 
 export type CharacterVisual = "master" | ThemeId;
 
@@ -60,3 +60,28 @@ export function buildOpenRouterCharacterRequest(input: {
 export const characterStorageKey = (visualRevision: number, visual: CharacterVisual) => `v${visualRevision}:character:${visual}`;
 
 export const characterVisuals: CharacterVisual[] = ["master", "sunrise", "midnight", "classic"];
+
+export const decorPrompt: Record<DecorKey, string> = {
+  lamp: "a small cozy bedside lamp with a star-patterned shade, glowing softly",
+  poster: "a cheerful framed adventure poster hanging on the wall",
+  rug: "a soft cloud-shaped rug lying naturally on the floor",
+  plant: "a happy small potted plant with rounded leaves",
+  radio: "a little retro radio sitting on a surface",
+  trophy: "a shiny golden trophy proudly on display",
+};
+
+export const decorSetKey = (decorations: Partial<Record<DecorKey, boolean>>) => (Object.keys(decorPrompt) as DecorKey[]).filter((key) => decorations[key]).join(",");
+
+export const roomStorageKey = (theme: ThemeId, decorSet: string) => `room:${theme}:${decorSet}`;
+
+export function buildRoomUpgradePrompt(theme: ThemeId, decorKeys: DecorKey[]) {
+  return [
+    "Edit the reference room photo and return the same room with new decorations added. There is no character in it.",
+    "Keep the exact same room, camera angle, framing, composition, proportions, art style, palette, and lighting; change nothing that already exists.",
+    themeDirection[theme],
+    `Naturally integrate these decorations: ${decorKeys.map((key) => decorPrompt[key]).join(", ")}.`,
+    "Place every item at a believable position: wall items flat on the walls, floor items resting on the floor, small objects standing on existing surfaces, each matched to the room's perspective, scale, shadows, and light direction.",
+    "Leave generous clear floor space at the center of the room for the companion character to stand later.",
+    "Strictly no people, no animals, no characters, no text, no logos, no UI, and no watermarks. Output the full room image.",
+  ].join(" ");
+}

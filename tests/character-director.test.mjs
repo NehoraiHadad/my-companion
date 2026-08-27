@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCharacterPrompt, buildOpenRouterCharacterRequest, characterStorageKey, characterVisuals } from "../src/characterDirector.ts";
+import { buildCharacterPrompt, buildOpenRouterCharacterRequest, buildRoomUpgradePrompt, characterStorageKey, characterVisuals, decorSetKey, roomStorageKey } from "../src/characterDirector.ts";
 
 test("master prompt creates one transparent canonical game character", () => {
   const prompt = buildCharacterPrompt("baby", "נועה", "master");
@@ -43,4 +43,28 @@ test("OpenRouter image request includes all ordered references and transparent o
 test("character kit has one master and exactly three room variants", () => {
   assert.deepEqual(characterVisuals, ["master", "sunrise", "midnight", "classic"]);
   assert.equal(characterStorageKey(12, "midnight"), "v12:character:midnight");
+});
+
+test("decor set key is stable regardless of purchase order", () => {
+  assert.equal(decorSetKey({ trophy: true, lamp: true, rug: true }), "lamp,rug,trophy");
+  assert.equal(decorSetKey({ lamp: true, rug: true, trophy: true }), "lamp,rug,trophy");
+  assert.equal(decorSetKey({ lamp: false, poster: undefined }), "");
+  assert.equal(decorSetKey({}), "");
+});
+
+test("room images are cached per theme and decor set", () => {
+  assert.equal(roomStorageKey("midnight", "lamp,trophy"), "room:midnight:lamp,trophy");
+  assert.equal(roomStorageKey("sunrise", ""), "room:sunrise:");
+});
+
+test("room upgrade prompt edits the same room and adds only the owned decorations", () => {
+  const prompt = buildRoomUpgradePrompt("midnight", ["lamp", "trophy"]);
+  assert.match(prompt, /star-patterned shade/);
+  assert.match(prompt, /shiny golden trophy/);
+  assert.match(prompt, /navy-and-violet/);
+  assert.match(prompt, /same room, camera angle/);
+  assert.match(prompt, /clear floor space at the center/);
+  assert.match(prompt, /no text/);
+  assert.doesNotMatch(prompt, /cloud-shaped rug/);
+  assert.doesNotMatch(prompt, /potted plant/);
 });
