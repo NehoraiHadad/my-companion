@@ -10,6 +10,8 @@
 - Humor should be short, warm, situational, and present in ordinary offline care—not gated behind AI. It must never shame the player or make a child the target of sarcasm.
 - OpenAI API, OpenRouter, KIE, and fal.ai are first-class BYOK providers. Routing is capability-based: language, voice, image, and video each choose their own provider and model; never classify a provider as “language-only” or “media-only.” Keys are session-only. A ChatGPT consumer subscription is separate from API access and must never be displayed as a working connector.
 - Progression requires both XP and real elapsed days. The home screen must always show the current day, visit streak, and progress toward the next evolution.
+- Later decoration shelves unlock through evolution stages, never by elapsed days alone, so both XP and time gates remain meaningful.
+- Repeating care on an already-satisfied need may still produce a warm reaction, but it must not farm XP, quests, weekly progress, personality points, or discovery coins. Waking from sleep is not a rewarded care action.
 - AI is part of the play loop: validated dynamic reactions can add small bounded bonuses and memories; voice can speak reactions; image styling is consent-gated; video is a rare optional dream event routed through the selected video provider.
 - Any compatible image-to-video provider can build the consent-gated character animation library one motion at a time. Downloaded clips are cached on-device and reused in the room; generation must clearly warn that it can take minutes and consume provider credits.
 - AI character creation is a stable four-asset kit: one canonical transparent master derived from the source photo, then sunrise, midnight, and classic room variants derived from that master. Home screens choose the matching local variant automatically; video always starts from the master or current generated variant to reduce identity drift.
@@ -17,6 +19,7 @@
 - The room is a game surface, not a dashboard. Keep the companion and the four care actions dominant; hide detailed needs, time, XP, photo replacement, and AI controls until the player explicitly opens them.
 - Main navigation uses purpose labels: טיפול, משחקים, התקדמות, פריטים. A one-screen guide explains the loop and that needs plus care score continue changing while the app is closed.
 - Returning after an absence always produces a short, humorous, non-shaming recap. System notifications are opt-in and must fall back to an in-app return recap if the Android host does not expose the Web Notifications API.
+- The onboarding photo is optional, but a non-empty name and explicit subject type are required before the room step. Do not provide a secondary path that bypasses those requirements.
 - For short in-game dialogue, GPT-5.6 Luna is the default cost-sensitive OpenAI model. OpenRouter remains the default video route because it exposes live video capability discovery, while KIE and fal.ai use documented model-specific queue adapters. OpenAI Sora 2 is visible only with its current Legacy/shutdown warning.
 
 ## Prototype Instructions

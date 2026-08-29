@@ -407,7 +407,7 @@ select.text-field { appearance: auto; }
 .room-scene { flex: 1 1 auto; height: auto; min-height: 300px; margin: 0; }
 .speech-bubble { top: 10px; max-width: 86%; padding-block: 7px; font-size: 10px; }
 .care-call { top: 82px; right: 17%; }
-.moving-character,.moving-character.photo-character { bottom: 0; width: min(64%,260px); height: 76%; max-height: 340px; margin: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.moving-character,.moving-character.photo-character { bottom: 0; left: calc(50% - min(32%,130px)); width: min(64%,260px); height: 76%; max-height: 340px; margin: 0; overflow: visible; transform: none; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .moving-character.photo-character img { object-fit: contain; border-radius: 31px; filter: drop-shadow(0 20px 20px rgba(0,0,0,.24)); }
 .moving-character.ai-character img { border-radius: 0; }
 .moving-character.video-character { overflow: hidden; border-radius: 31px; background: rgba(7,17,35,.72); mask-image: none; }

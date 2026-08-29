@@ -2,7 +2,7 @@
 
 A local-first Android companion game inspired by the care loop of classic Tamagotchi toys, with a premium modern visual direction and a light humorous voice.
 
-## Included in v5.3.0
+## Included in v5.4.0
 
 - Four continuously time-based needs: fullness, energy, hygiene, and joy, including correct in-session decay and resume processing.
 - Feed, sleep, clean, and play actions with cross-effects and XP progression.
@@ -23,6 +23,11 @@ A local-first Android companion game inspired by the care loop of classic Tamago
 - Optional asynchronous video dreams through the selected video route.
 - A reorganized AI studio with independent provider and model choices for text, speech, image editing, and image-to-video. OpenAI Sora 2 is marked Legacy with its announced shutdown date; OpenRouter is the default video route.
 - ChatGPT Subscription is explicitly explained as separate from OpenAI API access.
+- Twelve room decorations across three progression shelves. Later shelves unlock only when both elapsed days and XP reach the required evolution stage.
+- Daily quest rotation, a bounded weekly care goal, long-term streak milestones, late evolution stages, and one-time personality builds.
+- Meaningful-care rewards: redundant taps can still animate or wake the companion, but cannot farm XP, quest progress, weekly progress, or discovery coins.
+- Fresh state factories for new games and resets, so calendar, streak, and mess timers never reuse timestamps from app startup.
+- Decoration artwork is loaded as a separate on-demand chunk instead of inflating the initial game bundle.
 
 ## Privacy
 
@@ -40,6 +45,6 @@ The Android host source, including the local HTTPS asset loader and native image
 ## Android package
 
 - Package: `app.pocketcompanion.local`
-- Version: `5.3.0`
+- Version: `5.4.0`
 - Minimum Android: API 21
 - Target Android: API 34

@@ -660,3 +660,8 @@ export const decorArt: Record<DecorKey, ComponentType> = {
   bookshelf: BookshelfArt, aquarium: AquariumArt, telescope: TelescopeArt, fireplace: FireplaceArt,
   projector: ProjectorArt, icecream: IcecreamArt,
 };
+
+export default function DecorVisual({ decorKey }: { decorKey: DecorKey }) {
+  const Art = decorArt[decorKey];
+  return <Art />;
+}

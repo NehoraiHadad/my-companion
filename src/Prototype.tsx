@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type ReactNode } from "react";
 import {
   AvatarIcon, BackpackIcon, BellIcon, CameraIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CircleIcon,
   ClockIcon, CookieIcon, ExclamationTriangleIcon, FaceIcon, GearIcon,
@@ -10,7 +10,6 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { extractAiResponseText, parseAiEvent, type AiProvider } from "./aiGame";
 import { animationStorageKey, buildAnimationRequest, motionMeta } from "./animationDirector";
 import { buildCharacterPrompt, buildOpenRouterCharacterRequest, buildRoomUpgradePrompt, characterStorageKey, characterVisuals, decorSetKey, roomStorageKey, type CharacterVisual } from "./characterDirector";
-import { decorArt } from "./decorArt";
 import { defaultCompanionArt } from "./defaultCompanions";
 import {
   buildFalImageTask, buildFalVideoTask, buildKieImageTask, buildKieVideoTask,
@@ -20,8 +19,8 @@ import {
 import { loadClip, loadMedia, removeClips, removeMedia, saveClip, saveMedia } from "./mediaStore";
 import { Carousel, KeyboardInput, MobileScroll, useKeyboard } from "./mobile";
 import {
-  HOUR, absenceMessage, ageDay, applyElapsed, arcadePayoutScale, arcadeRewardBonus, buyDecoration, chooseBuild, claimDailyQuest, claimStreakMilestone, claimWeekly, clamp, currentStage,
-  decorMeta, defaultState, localDayKey, localWeekKey, nextStage, performCareAction, personaBuildMeta, questPool, recordArcadeRun, recordPurchase, stageMeta, stageUnlocks,
+  HOUR, absenceMessage, ageDay, applyElapsed, arcadePayoutScale, arcadeRewardBonus, buyDecoration, chooseBuild, claimDailyQuest, claimStreakMilestone, claimWeekly, clamp, createDefaultState, currentStage,
+  decorMeta, isDecorUnlocked, localDayKey, localWeekKey, nextStage, performCareAction, personaBuildMeta, questPool, recordArcadeRun, recordPurchase, stageMeta, stageOrder, stageUnlocks,
   streakMilestones, useInventoryItem, weeklyQuest, whole,
   type ActionKey, type CharacterKind, type CompanionMotion, type DecorKey, type GameState, type ItemKey, type NeedKey, type PersonalityId, type QuestId, type StageId, type ThemeId,
 } from "./gameEngine";
@@ -61,6 +60,7 @@ const V3_STORAGE_KEY = "little-friend-state-v3";
 const V2_STORAGE_KEY = "little-friend-state-v2";
 const OLD_STORAGE_KEY = "pocket-companion-state-v1";
 const AI_KEY = "little-friend-ai-v5";
+const DecorVisual = lazy(() => import("./decorArt"));
 const resetScroll = (selector: string) => {
   const reset = () => { const scroll = document.querySelector<HTMLElement>(selector); if (scroll) scroll.scrollTop = 0; };
   reset(); window.requestAnimationFrame(reset); window.setTimeout(reset, 180);
@@ -125,8 +125,6 @@ const items: Record<ItemKey, { title: string; note: string; price: number; icon:
   ball: { title: "כדור קופצני", note: "+28 שמחה", price: 18, icon: CircleIcon },
 };
 
-const decorIcons: Record<DecorKey, ComponentType> = decorArt;
-
 const decorLines: Record<DecorKey, string> = {
   lamp: "המנורה נדלקה והחדר מיד התחיל להתנהג יפה.",
   poster: "תליתי פוסטר. עכשיו יש למי להסביר את הרעיונות שלי.",
@@ -142,14 +140,12 @@ const decorLines: Record<DecorKey, string> = {
   icecream: "עמדת גלידה בבית. זו כבר לא סתם החלטה, זו מדיניות.",
 };
 
-const decorShelves: Array<{ minDay: number; title: string; note: string }> = [
-  { minDay: 1, title: "המדף הראשון", note: "פתוח מהיום הראשון" },
-  { minDay: 8, title: "המדף השני", note: "נפתח ביום 8" },
-  { minDay: 15, title: "המדף השלישי", note: "נפתח ביום 15" },
+const decorShelves: Array<{ unlockStage: StageId; title: string; note: string }> = [
+  { unlockStage: "baby", title: "המדף הראשון", note: "פתוח מהשלב הראשון" },
+  { unlockStage: "grown", title: "המדף השני", note: "נפתח בשלב חבר ותיק" },
+  { unlockStage: "mentor", title: "המדף השלישי", note: "נפתח בשלב מנטור השכונה" },
 ];
-const shelfIndex = (minDay: number) => (minDay >= 15 ? 2 : minDay >= 8 ? 1 : 0);
-const daysLeftLabel = (days: number) => (days === 1 ? "עוד יום אחד" : `עוד ${days} ימים`);
-const stageOrder: StageId[] = ["baby", "kid", "teen", "grown", "mentor", "legend"];
+const shelfIndex = (unlockStage: StageId) => unlockStage === "mentor" ? 2 : unlockStage === "grown" ? 1 : 0;
 const wagerCost = 15;
 
 const sharedReactions: Record<ActionKey, string[]> = {
@@ -219,12 +215,14 @@ const guessTells = [
 ];
 
 function loadState(): GameState {
+  const now = Date.now();
+  const initial = createDefaultState(now);
   try {
     const fresh = new URLSearchParams(location.search).get("fresh") === "1";
     if (!fresh) {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as GameState | null;
       if (saved?.version === 5) {
-        return applyElapsed({ ...defaultState, ...saved, memories: saved.memories ?? [], animationSlots: saved.animationSlots ?? {}, aiCharacter: saved.aiCharacter ?? false, characterVariants: saved.characterVariants ?? {}, aiRooms: saved.aiRooms ?? {}, decorations: saved.decorations ?? {}, claimedMilestones: saved.claimedMilestones ?? [], arcadePlays: saved.arcadePlays ?? 0, dailyQuests: saved.dailyQuests ?? [], questProgress: saved.questProgress ?? {}, dailyActionKinds: saved.dailyActionKinds ?? [], weeklyKey: saved.weeklyKey ?? localWeekKey(), weeklyProgress: saved.weeklyProgress ?? 0, weeklyClaimed: saved.weeklyClaimed ?? false, personaBuild: saved.personaBuild ?? "", napBonus: saved.napBonus ?? 0, pendingNapReward: saved.pendingNapReward ?? 0, sourcePhoto: saved.sourcePhoto ?? saved.photo });
+        return applyElapsed({ ...initial, ...saved, memories: saved.memories ?? [], animationSlots: saved.animationSlots ?? {}, aiCharacter: saved.aiCharacter ?? false, characterVariants: saved.characterVariants ?? {}, aiRooms: saved.aiRooms ?? {}, decorations: saved.decorations ?? {}, claimedMilestones: saved.claimedMilestones ?? [], arcadePlays: saved.arcadePlays ?? 0, dailyQuests: saved.dailyQuests ?? [], questProgress: saved.questProgress ?? {}, dailyActionKinds: saved.dailyActionKinds ?? [], weeklyKey: saved.weeklyKey ?? localWeekKey(), weeklyProgress: saved.weeklyProgress ?? 0, weeklyClaimed: saved.weeklyClaimed ?? false, personaBuild: saved.personaBuild ?? "", napBonus: saved.napBonus ?? 0, pendingNapReward: saved.pendingNapReward ?? 0, sourcePhoto: saved.sourcePhoto ?? saved.photo });
       }
       const v4 = JSON.parse(localStorage.getItem(V4_STORAGE_KEY) ?? "null") as Partial<GameState> | null;
       const v3 = JSON.parse(localStorage.getItem(V3_STORAGE_KEY) ?? "null") as Partial<GameState> | null;
@@ -233,7 +231,7 @@ function loadState(): GameState {
       if (legacy) {
         const legacyName = legacy.name === "לולי" ? "" : legacy.name || "";
         return applyElapsed({
-          ...defaultState,
+          ...initial,
           onboarded: legacyName ? legacy.onboarded ?? false : false,
           name: legacyName,
           theme: legacy.theme || "sunrise",
@@ -244,8 +242,8 @@ function loadState(): GameState {
           xp: legacy.xp ?? 0,
           coins: legacy.coins ?? 80,
           actions: legacy.actions ?? 0,
-          personality: legacy.personality ?? defaultState.personality,
-          inventory: legacy.inventory ?? defaultState.inventory,
+          personality: legacy.personality ?? initial.personality,
+          inventory: legacy.inventory ?? initial.inventory,
           memories: legacy.memories ?? [],
           photo: legacy.photo,
           birthAt: legacy.birthAt ?? Date.now() - HOUR,
@@ -262,7 +260,7 @@ function loadState(): GameState {
       }
     }
   } catch { /* fall through */ }
-  return { ...defaultState, birthAt: Date.now(), lastSeen: Date.now(), visualRevision: Date.now() };
+  return { ...initial, visualRevision: now };
 }
 
 function loadAi(): AiSettings {
@@ -681,6 +679,7 @@ export default function Prototype() {
     const napArmed = game.sleeping && game.napBonus > 0 && game.sleepingUntil > Date.now();
     const next = performCareAction(game, action);
     setGame(next);
+    const rewardedAction = next.actions > game.actions;
     if (napArmed && (!next.sleeping || next.napBonus <= 0)) pushToast("התנומה נקטעה — הבונוס התפוגג");
     const foundCoins = next.coins - game.coins >= 12;
     if (foundCoins) window.setTimeout(() => { showEvent(`נמצאו 12 מטבעות מתחת לשטיח של ${game.name}. לא שואלים שאלות.`); showEffect("coin"); }, 400);
@@ -689,7 +688,7 @@ export default function Prototype() {
     say(lines[Math.floor(Math.random() * lines.length)]); showEffect(actionsMeta[action].effect);
     const nextMotion = action === "sleep" && game.sleeping ? "idle" : actionMotion[action];
     playMotion(nextMotion, 2600, nextMotion === "sleep");
-    if (!foundCoins && next.actions % 9 === 0) window.setTimeout(() => {
+    if (!foundCoins && rewardedAction && next.actions % 9 === 0) window.setTimeout(() => {
       const reports = [
         `בחדר של ${game.name} נפתחה ועדת חקירה. המסקנה: צריך עוד חטיף.`,
         `דיווח מהחדר: הכול בשליטה, חוץ ממה שלא.`,
@@ -697,7 +696,7 @@ export default function Prototype() {
       ];
       showEvent(reports[Math.floor(next.actions / 9) % reports.length]);
     }, 520);
-    if (aiStatus === "ready" && ai.autoEvents && next.actions % 4 === 0) window.setTimeout(() => void askAi("ספר על מה שקרה אחרי פעולת הטיפול האחרונה", next), 650);
+    if (rewardedAction && aiStatus === "ready" && ai.autoEvents && next.actions % 4 === 0) window.setTimeout(() => void askAi("ספר על מה שקרה אחרי פעולת הטיפול האחרונה", next), 650);
   };
 
   const useItem = (key: ItemKey) => {
@@ -718,7 +717,7 @@ export default function Prototype() {
     const now = Date.now();
     if (buyDecoration(game, key, now).coins === game.coins) {
       say(game.decorations[key] ? "כבר יש לנו את זה בבית. בדקתי פעמיים."
-        : ageDay(game, now) < decorMeta[key].minDay ? "המדף הזה עדיין סגור. הזמן עובד בשבילנו, רק לאט."
+        : !isDecorUnlocked(game, key, now) ? `המדף הזה נפתח בשלב ${stageMeta[decorMeta[key].unlockStage].title}. גם הניסיון וגם הזמן צריכים להיות מוכנים.`
         : "חסרים לנו מטבעות. המשחקייה קוראת לנו.");
       return;
     }
@@ -1350,7 +1349,7 @@ export default function Prototype() {
     setClipUrls({}); setCharacterUrls({}); setRoomUrls({}); setActiveMotion("idle");
     const revision = Date.now();
     revisionRef.current = revision;
-    setGame({ ...defaultState, onboarded: false, birthAt: Date.now(), lastSeen: Date.now(), visualRevision: revision });
+    setGame({ ...createDefaultState(revision), visualRevision: revision });
     closeAllOverlays(); setScreen("home");
   };
 
@@ -1371,7 +1370,7 @@ export default function Prototype() {
         {screen === "home" ? <HomeScreen game={game} characterUrl={currentCharacterUrl} health={health} stage={stage} evolution={evolution} day={day} needs={needs} lowestNeed={lowestNeed[0]} callNeed={callNeed} currentRoom={currentRoom} roomUrl={currentRoomUrl} bakedDecor={bakedDecor} reaction={reaction} reactionId={reactionId} wanderX={wanderX} effect={effect} isNight={isNight} aiReady={voiceStatus === "ready"} aiStatus={aiStatus} isSpeaking={isSpeaking} activeMotion={activeMotion} clipUrl={clipUrls[activeMotion] || clipUrls.idle} persistFailed={persistFailed} reduceMotion={Boolean(reduceMotion)} onSettings={() => pushOverlay("settings")} onAi={() => pushOverlay("ai")} onSpeak={() => void speak()} onAction={performAction} onPet={() => say(affectionLines[Math.floor(Math.random() * affectionLines.length)])} onPickPhoto={() => fileRef.current?.click()} onUseMedicine={() => useItem("medicine")} /> : null}
         {screen === "arcade" ? <ArcadeScreen coins={game.coins} starGame={starGame} guessGame={guessGame} wagerUnlocked={wagerUnlocked} wagerArmed={wagerArmed} onToggleWager={toggleWager} onStartStars={startStarGame} onCatch={catchLane} onStartGuess={startGuess} onGuess={makeGuess} onExitStars={exitStarGame} onExitGuess={exitGuessGame} /> : null}
         {screen === "journey" ? <JourneyScreen game={game} stage={stage} evolution={evolution} day={day} personality={personality} careGrade={careGrade} dailyQuestIds={dailyQuestIds} buildReady={buildReady} onOpenBuild={() => pushOverlay("build")} onClaim={claimQuest} onClaimWeekly={claimWeeklyQuest} onClaimMilestone={claimMilestone} /> : null}
-        {screen === "bag" ? <BagScreen game={game} day={day} onUse={useItem} onBuy={buyItem} onBuyDecor={buyDecor} onArcade={() => setScreen("arcade")} /> : null}
+        {screen === "bag" ? <BagScreen game={game} onUse={useItem} onBuy={buyItem} onBuyDecor={buyDecor} onArcade={() => setScreen("arcade")} /> : null}
       </main></MobileScroll>
 
       {game.onboarded ? <nav className="bottom-nav" aria-label="ניווט ראשי" inert={overlayOpen} aria-hidden={overlayOpen || undefined}>
@@ -1537,7 +1536,7 @@ function HomeScreen({ game, characterUrl, health, stage, evolution, day, needs, 
       {game.poop > 0 ? <div className="mess-row" role="img" aria-label={`${game.poop} לכלוכים`}>{Array.from({ length: game.poop }).map((_, index) => <motion.span key={index} initial={{ y: -20 }} animate={{ y: 0 }}><StinkIcon /></motion.span>)}</div> : null}
       {game.sleeping ? <div className="sleep-cloud"><MoonIcon /><span>ששש…</span></div> : null}
       {game.sleeping ? <div className="nap-chip" role="status"><ClockIcon /><span>{napMinutes > 0 ? `תנומה מושלמת בעוד ${napMinutes} דק׳` : "התנומה הושלמה — עוד רגע מתעוררים"}</span>{game.napBonus > 0 ? <em>+{game.napBonus} בהתעוררות</em> : null}</div> : null}
-      {(Object.keys(decorMeta) as DecorKey[]).filter((key) => game.decorations[key] && !bakedDecor.includes(key)).map((key, index) => { const Art = decorArt[key]; return <motion.div className={`room-decor decor-${key}`} key={key} aria-hidden initial={{ opacity: 0, scale: .5, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ delay: index * .07, type: "spring", stiffness: 220, damping: 17 }}><Art /></motion.div>; })}
+      {(Object.keys(decorMeta) as DecorKey[]).filter((key) => game.decorations[key] && !bakedDecor.includes(key)).map((key, index) => <motion.div className={`room-decor decor-${key}`} key={key} aria-hidden initial={{ opacity: 0, scale: .5, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ delay: index * .07, type: "spring", stiffness: 220, damping: 17 }}><Suspense fallback={null}><DecorVisual decorKey={key} /></Suspense></motion.div>)}
       <AnimatePresence>{effect && !reduceMotion ? <EffectBurst key={effect.id} kind={effect.kind} offset={restX} /> : null}</AnimatePresence>
     </div>
     {game.sick ? <button className="care-alert" onClick={onUseMedicine}><ExclamationTriangleIcon /><span><strong>משהו לא מרגיש טוב אצל {game.name}</strong><small>השתמשו בתרופה מהתיק</small></span><ChevronLeftIcon /></button> : null}
@@ -1587,7 +1586,7 @@ function JourneyScreen({ game, stage, evolution, day, personality, careGrade, da
   </section>;
 }
 
-function BagScreen({ game, day, onUse, onBuy, onBuyDecor, onArcade }: any) {
+function BagScreen({ game, onUse, onBuy, onBuyDecor, onArcade }: any) {
   const [tab, setTab] = useState<"items" | "room">("items");
   const empty = (Object.keys(items) as ItemKey[]).every((key) => game.inventory[key] < 1);
   const toShop = () => document.getElementById("bag-shop")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1605,15 +1604,15 @@ function BagScreen({ game, day, onUse, onBuy, onBuyDecor, onArcade }: any) {
     </> : <>
       <div className="section-heading shop-title"><div><small>משדרגים את הבית</small><h2>לחדר</h2></div><HomeIcon /></div>
       {decorShelves.map((shelf, index) => {
-        const rows = (Object.entries(decorMeta) as Array<[DecorKey,(typeof decorMeta)[DecorKey]]>).filter(([, decor]) => shelfIndex(decor.minDay) === index);
+        const rows = (Object.entries(decorMeta) as Array<[DecorKey,(typeof decorMeta)[DecorKey]]>).filter(([, decor]) => shelfIndex(decor.unlockStage) === index);
         if (!rows.length) return null;
-        const shelfLocked = day < shelf.minDay;
+        const shelfLocked = stageOrder.indexOf(currentStage(game)) < stageOrder.indexOf(shelf.unlockStage);
         return <section className={`decor-shelf ${shelfLocked ? "locked" : ""}`} key={shelf.title}>
-          <div className="shelf-head"><div><strong>{shelf.title}</strong><small>{shelf.note}</small></div>{shelfLocked ? <em><LockClosedIcon />{daysLeftLabel(shelf.minDay - day)}</em> : null}</div>
-          <div className="shop-list decor-list">{rows.map(([key,decor]) => { const Art = decorIcons[key]; const owned = Boolean(game.decorations[key]); const locked = day < decor.minDay; return <button key={key} className={`${owned ? "owned" : ""} ${locked ? "locked" : ""}`} disabled={owned || locked || game.coins < decor.price} aria-label={locked ? `${decor.title} · נפתח ביום ${decor.minDay}` : owned ? `${decor.title} · כבר בבית` : `${decor.title} · ${decor.price} מטבעות`} onClick={() => onBuyDecor(key)}><span><Art /></span><div><strong>{decor.title}</strong><small>{decor.note}</small></div>{owned ? <em className="owned-tag"><CheckIcon />בבית!</em> : locked ? <em className="locked-tag"><LockClosedIcon />{daysLeftLabel(decor.minDay - day)}</em> : <em><TokensIcon />{decor.price}</em>}</button>; })}</div>
+          <div className="shelf-head"><div><strong>{shelf.title}</strong><small>{shelf.note}</small></div>{shelfLocked ? <em><LockClosedIcon />{stageMeta[shelf.unlockStage].title}</em> : null}</div>
+          <div className="shop-list decor-list">{rows.map(([key,decor]) => { const owned = Boolean(game.decorations[key]); const locked = !isDecorUnlocked(game, key); return <button key={key} className={`${owned ? "owned" : ""} ${locked ? "locked" : ""}`} disabled={owned || locked || game.coins < decor.price} aria-label={locked ? `${decor.title} · נפתח בשלב ${stageMeta[decor.unlockStage].title}` : owned ? `${decor.title} · כבר בבית` : `${decor.title} · ${decor.price} מטבעות`} onClick={() => onBuyDecor(key)}><span><Suspense fallback={<CircleIcon />}><DecorVisual decorKey={key} /></Suspense></span><div><strong>{decor.title}</strong><small>{decor.note}</small></div>{owned ? <em className="owned-tag"><CheckIcon />בבית!</em> : locked ? <em className="locked-tag"><LockClosedIcon />{stageMeta[decor.unlockStage].title}</em> : <em><TokensIcon />{decor.price}</em>}</button>; })}</div>
         </section>;
       })}
-      <div className="small-note">הקישוטים מופיעים מיד בחדר, ובעמוד ה־AI אפשר לצבוע אותם ישר לתוך תמונת החדר. מדפים נוספים נפתחים עם הימים המשותפים.</div>
+      <div className="small-note">הקישוטים מופיעים מיד בחדר, ובעמוד ה־AI אפשר לצבוע אותם ישר לתוך תמונת החדר. מדפים נוספים נפתחים כשגם הזמן וגם נקודות הניסיון מספיקים לשלב הבא.</div>
     </>}
   </section>;
 }
@@ -1692,7 +1691,7 @@ function Onboarding({ game, isImporting, onKind, onName, onTheme, onPhoto, onDon
     {step > 0 ? <button className="onboarding-back" aria-label="חזרה" onClick={() => blurAnd(() => setStep((current) => current - 1))}><ChevronRightIcon /></button> : null}
     {step === 0 ? <><small>טמגוצ׳י, אבל אישי</small><h1>מישהו קטן עומד לעבור לגור אצלך.</h1><p>מצלמים אדם, תינוק או חיית מחמד. מטפלים, משחקים וצוחקים בדרך.</p><button className="wide-button accent" onClick={() => setStep(1)}>יוצרים חבר<ChevronLeftIcon /></button></> : null}
     {step === 1 ? <><small>שלב 1 מתוך 3</small><h1>מי יהיה החבר?</h1><p>הבחירה משנה את השפה, פעולות הטיפול והבדיחות.</p><div className="kind-grid">{(Object.entries(kindLabels) as Array<[Exclude<CharacterKind, "">,(typeof kindLabels)[Exclude<CharacterKind, "">]]>).map(([kind, meta]) => { const Icon = meta.icon; return <button key={kind} className={game.characterKind === kind ? "selected" : ""} onClick={() => onKind(kind)}><span><Icon /></span><strong>{meta.title}</strong><small>{meta.note}</small>{game.characterKind === kind ? <i><CheckIcon /></i> : null}</button>; })}</div><button className="wide-button accent" disabled={!game.characterKind} onClick={() => setStep(2)}>ממשיכים<ChevronLeftIcon /></button></> : null}
-    {step === 2 ? <><small>שלב 2 מתוך 3</small><h1>שם ופנים</h1><p>תמונה אמיתית פותחת את יכולות ה־AI, אבל אפשר גם להתחיל בלעדיה.</p><div className={`photo-pick ${game.photo ? "has-photo" : ""}`}><button disabled={isImporting} onClick={onPhoto}>{game.photo ? <img src={game.photo} alt="התמונה שנבחרה" /> : <span><CameraIcon /><strong>{isImporting ? "מעבדים את התמונה…" : "צילום או תמונה"}</strong><small>אדם, תינוק או חיית מחמד</small></span>}</button>{game.photo ? <button className="replace-photo" disabled={isImporting} onClick={onPhoto}>להחליף</button> : null}</div>{!game.photo ? <button className="ghost-button" onClick={() => blurAnd(() => setStep(3))}>בלי תמונה בינתיים</button> : null}<KeyboardInput aria-label="שם הדמות" className="text-field" placeholder={selectedKind?.namePlaceholder || "איך קוראים לדמות?"} value={game.name} onChange={(event) => onName(event.target.value.slice(0,18))} /><div className="privacy-note"><LockClosedIcon />התמונה נשארת במכשיר. שליחה ל־AI מתבצעת רק באישור נפרד.</div><button className="wide-button accent" disabled={!game.name.trim()} onClick={() => blurAnd(() => setStep(3))}>החדר הבא<ChevronLeftIcon /></button></> : null}
+    {step === 2 ? <><small>שלב 2 מתוך 3</small><h1>שם ופנים</h1><p>תמונה אמיתית פותחת את יכולות ה־AI, אבל אפשר גם להתחיל בלעדיה.</p><div className={`photo-pick ${game.photo ? "has-photo" : ""}`}><button disabled={isImporting} onClick={onPhoto}>{game.photo ? <img src={game.photo} alt="התמונה שנבחרה" /> : <span><CameraIcon /><strong>{isImporting ? "מעבדים את התמונה…" : "צילום או תמונה (לא חובה)"}</strong><small>אדם, תינוק או חיית מחמד</small></span>}</button>{game.photo ? <button className="replace-photo" disabled={isImporting} onClick={onPhoto}>להחליף</button> : null}</div><KeyboardInput aria-label="שם הדמות" className="text-field" placeholder={selectedKind?.namePlaceholder || "איך קוראים לדמות?"} value={game.name} onChange={(event) => onName(event.target.value.slice(0,18))} /><div className="privacy-note"><LockClosedIcon />התמונה נשארת במכשיר. אפשר להמשיך בלי תמונה ולהוסיף אותה אחר כך.</div><button className="wide-button accent" disabled={!game.name.trim()} onClick={() => blurAnd(() => setStep(3))}>החדר הבא<ChevronLeftIcon /></button></> : null}
     {step === 3 ? <><small>שלב 3 מתוך 3</small><h1>איפה גרים?</h1><p>אפשר להחליף חדר אחר כך בלי לאבד התקדמות.</p><div className="onboarding-themes">{themes.map((theme) => <button key={theme.id} className={game.theme === theme.id ? "selected" : ""} onClick={() => onTheme(theme.id)}><img src={theme.image} alt="" /><span>{theme.title}</span></button>)}</div><button className="wide-button accent" disabled={!game.name.trim() || !game.characterKind} onClick={() => blurAnd(onDone)}>פותחים את הדלת<HomeIcon /></button></> : null}
     {step > 0 ? <div className="step-dots">{[1,2,3].map((index) => <i className={index === step ? "active" : ""} key={index} />)}</div> : null}
   </motion.div></div>;

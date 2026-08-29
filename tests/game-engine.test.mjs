@@ -12,9 +12,11 @@ import {
   claimDailyQuest,
   claimStreakMilestone,
   claimWeekly,
+  createDefaultState,
   currentStage,
   decorMeta,
   defaultState,
+  isDecorUnlocked,
   localDayKey,
   localWeekKey,
   nextStage,
@@ -32,7 +34,7 @@ import {
 
 function stateAt(now, overrides = {}) {
   return {
-    ...structuredClone(defaultState),
+    ...createDefaultState(now),
     onboarded: true,
     birthAt: now,
     lastSeen: now,
@@ -60,6 +62,18 @@ test("a fresh install has no forced name, animal, or completed onboarding", () =
   assert.equal(defaultState.weeklyProgress, 0);
   assert.equal(defaultState.weeklyClaimed, false);
   assert.deepEqual(defaultState.aiRooms, {});
+});
+
+test("a newly created or reset state receives fresh calendar and mess timestamps", () => {
+  const first = new Date(2026, 7, 24, 23, 55).getTime();
+  const second = new Date(2026, 7, 25, 8, 10).getTime();
+  const state = createDefaultState(second);
+  assert.equal(state.birthAt, second);
+  assert.equal(state.lastSeen, second);
+  assert.equal(state.dailyKey, localDayKey(new Date(second)));
+  assert.equal(state.weeklyKey, localWeekKey(new Date(second)));
+  assert.equal(state.nextMessAt, second + 5.5 * HOUR);
+  assert.notEqual(state.dailyKey, createDefaultState(first).dailyKey);
 });
 
 test("care score visibly declines with elapsed time even before a crisis", () => {
@@ -157,7 +171,7 @@ test("care actions feed the quest counters the UI reads", () => {
   const now = new Date(2026, 7, 24, 21).getTime();
   const base = stateAt(now, { fullness: 70, energy: 70, hygiene: 70, mood: 70 });
   const one = performCareAction(base, "clean", now);
-  const two = performCareAction(one, "clean", now);
+  const two = performCareAction({ ...one, hygiene: 70, poop: 1 }, "clean", now);
   assert.equal(two.questProgress.care4, 2);
   assert.equal(two.questProgress.care8, 2);
   assert.equal(two.questProgress.cleanTwice, 2);
@@ -306,12 +320,15 @@ test("all four care actions change the intended needs and personality", () => {
   for (const result of [fed, sleeping, clean, played]) assert.ok(result.xp > base.xp);
 });
 
-test("care reward has diminishing returns but never becomes zero", () => {
+test("care rewards stop when a need is already full", () => {
   const now = Date.now();
   const urgent = performCareAction(stateAt(now, { fullness: 5 }), "feed", now);
   const alreadyFull = performCareAction(stateAt(now, { fullness: 100 }), "feed", now);
   assert.ok(urgent.xp > alreadyFull.xp);
-  assert.ok(alreadyFull.xp >= 4);
+  assert.equal(alreadyFull.xp, 0);
+  assert.equal(alreadyFull.actions, 0);
+  assert.equal(alreadyFull.weeklyProgress, 0);
+  assert.equal(alreadyFull.questProgress.care4, undefined);
 });
 
 test("every sixth care action grants the room discovery bonus", () => {
@@ -324,8 +341,18 @@ test("every sixth care action grants the room discovery bonus", () => {
 test("the discovery bonus is not farmable by repeating a filled need", () => {
   const now = Date.now();
   const result = performCareAction(stateAt(now, { actions: 5, coins: 10, mood: 100 }), "play", now);
-  assert.equal(result.actions, 6);
+  assert.equal(result.actions, 5);
   assert.equal(result.coins, 10);
+});
+
+test("interrupting sleep wakes the companion without farming progress", () => {
+  const now = Date.now();
+  const napping = performCareAction(stateAt(now, { energy: 40 }), "sleep", now);
+  const woken = performCareAction(napping, "sleep", now + 1000);
+  assert.equal(woken.sleeping, false);
+  assert.equal(woken.actions, napping.actions);
+  assert.equal(woken.xp, napping.xp);
+  assert.equal(woken.weeklyProgress, napping.weeklyProgress);
 });
 
 test("a personality build is picked once, at 25 points, and changes the day", () => {
@@ -342,7 +369,7 @@ test("a personality build is picked once, at 25 points, and changes the day", ()
   const cozyNap = performCareAction(chooseBuild(ready, "cozy"), "sleep", now);
   assert.equal(cozyNap.sleepingUntil, now + 45 * 60_000);
   assert.equal(performCareAction(ready, "sleep", now).sleepingUntil, now + 30 * 60_000);
-  const comic = chooseBuild({ ...ready, actions: 3, coins: 10, mood: 100 }, "comic");
+  const comic = chooseBuild({ ...ready, actions: 3, coins: 10, mood: 40 }, "comic");
   const laugh = performCareAction(comic, "play", now);
   assert.equal(laugh.actions, 4);
   assert.equal(laugh.coins, 15);
@@ -419,19 +446,23 @@ test("buying a decoration costs coins once and rewards the room upgrade", () => 
   assert.equal(buyDecoration(stateAt(now, { coins: 30 }), "trophy", now).decorations.trophy, undefined);
 });
 
-test("the later shop shelves stay locked until the companion is old enough", () => {
+test("the later shop shelves require the matching XP-and-time stage", () => {
   const now = new Date(2026, 7, 24, 10).getTime();
   const rich = stateAt(now, { coins: 5000 });
-  assert.equal(decorMeta.bookshelf.minDay, 8);
-  assert.equal(decorMeta.fireplace.minDay, 15);
+  assert.equal(decorMeta.bookshelf.unlockStage, "grown");
+  assert.equal(decorMeta.fireplace.unlockStage, "mentor");
   assert.equal(buyDecoration(rich, "bookshelf", now), rich);
   assert.equal(buyDecoration(rich, "fireplace", now), rich);
-  const week = { ...rich, birthAt: now - 7 * DAY };
-  const shelf = buyDecoration(week, "bookshelf", now);
+  const oldWithoutXp = { ...rich, birthAt: now - 30 * DAY };
+  assert.equal(isDecorUnlocked(oldWithoutXp, "bookshelf", now), false);
+  const grown = { ...rich, xp: 850, birthAt: now - 6 * DAY };
+  assert.equal(isDecorUnlocked(grown, "bookshelf", now), true);
+  const shelf = buyDecoration(grown, "bookshelf", now);
   assert.equal(shelf.decorations.bookshelf, true);
   assert.equal(shelf.coins, 5000 - decorMeta.bookshelf.price);
-  assert.equal(buyDecoration(week, "projector", now), week);
-  assert.equal(buyDecoration({ ...rich, birthAt: now - 14 * DAY }, "projector", now).decorations.projector, true);
+  assert.equal(buyDecoration(grown, "projector", now), grown);
+  const mentor = { ...rich, xp: 2600, birthAt: now - 13 * DAY };
+  assert.equal(buyDecoration(mentor, "projector", now).decorations.projector, true);
 });
 
 test("the daily coin grant grows with a furnished room", () => {

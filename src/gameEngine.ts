@@ -65,6 +65,7 @@ export type GameState = {
 
 export const HOUR = 3_600_000;
 export const DAY = 24 * HOUR;
+export const stageOrder: StageId[] = ["baby", "kid", "teen", "grown", "mentor", "legend"];
 export const localDayKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 export const previousLocalDayKey = (date = new Date()) => localDayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1));
 export const localWeekKey = (date = new Date()) => localDayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - ((date.getDay() + 6) % 7)));
@@ -85,38 +86,44 @@ export function absenceMessage(name: string, awayMinutes: number) {
   return `${elapsed}. אצל ${name} נשמר לך מקום, והגעגוע הוסתר בכישרון בינוני.`;
 }
 
-export const defaultState: GameState = {
-  version: 5, onboarded: false, name: "", characterKind: "", theme: "sunrise",
-  fullness: 68, energy: 78, hygiene: 74, mood: 72,
-  xp: 0, coins: 80, careScore: 82, careMistakes: 0, actions: 0,
-  poop: 0, sick: false, sleeping: false,
-  birthAt: Date.now(), lastSeen: Date.now(), dailyKey: localDayKey(),
-  dailyQuests: [], questProgress: {}, dailyActionKinds: [],
-  weeklyKey: localWeekKey(), weeklyProgress: 0, weeklyClaimed: false,
-  arcadePlays: 0, claimed: [],
-  personality: { curious: 0, cozy: 0, comic: 0 }, personaBuild: "",
-  napBonus: 0, pendingNapReward: 0,
-  inventory: { apple: 3, meal: 1, soap: 2, medicine: 1, ball: 1 },
-  streak: 1, bestStreak: 1, lastVisitKey: localDayKey(), nextMessAt: Date.now() + 5.5 * HOUR,
-  sleepingUntil: 0, awayMinutes: 0, memories: [], visualRevision: 1, animationSlots: {},
-  aiCharacter: false, characterVariants: {}, aiRooms: {},
-  notificationsEnabled: false, guideSeen: false,
-  decorations: {}, claimedMilestones: [],
-};
+export function createDefaultState(now = Date.now()): GameState {
+  const date = new Date(now);
+  const dayKey = localDayKey(date);
+  return {
+    version: 5, onboarded: false, name: "", characterKind: "", theme: "sunrise",
+    fullness: 68, energy: 78, hygiene: 74, mood: 72,
+    xp: 0, coins: 80, careScore: 82, careMistakes: 0, actions: 0,
+    poop: 0, sick: false, sleeping: false,
+    birthAt: now, lastSeen: now, dailyKey: dayKey,
+    dailyQuests: [], questProgress: {}, dailyActionKinds: [],
+    weeklyKey: localWeekKey(date), weeklyProgress: 0, weeklyClaimed: false,
+    arcadePlays: 0, claimed: [],
+    personality: { curious: 0, cozy: 0, comic: 0 }, personaBuild: "",
+    napBonus: 0, pendingNapReward: 0,
+    inventory: { apple: 3, meal: 1, soap: 2, medicine: 1, ball: 1 },
+    streak: 1, bestStreak: 1, lastVisitKey: dayKey, nextMessAt: now + 5.5 * HOUR,
+    sleepingUntil: 0, awayMinutes: 0, memories: [], visualRevision: 1, animationSlots: {},
+    aiCharacter: false, characterVariants: {}, aiRooms: {},
+    notificationsEnabled: false, guideSeen: false,
+    decorations: {}, claimedMilestones: [],
+  };
+}
 
-export const decorMeta: Record<DecorKey, { title: string; note: string; price: number; minDay: number }> = {
-  lamp: { title: "מנורת כוכבים", note: "אור רך שנדלק בערב", price: 120, minDay: 1 },
-  poster: { title: "פוסטר גיבורים", note: "השראה על הקיר", price: 100, minDay: 1 },
-  rug: { title: "שטיח עננים", note: "רך מתחת לרגליים", price: 150, minDay: 1 },
-  plant: { title: "עציץ שמח", note: "חבר ירוק ושקט", price: 180, minDay: 1 },
-  radio: { title: "רדיו רטרו", note: "פסקול קטן לחדר", price: 240, minDay: 1 },
-  trophy: { title: "גביע נוצץ", note: "הוכחה שאנחנו אלופים", price: 400, minDay: 1 },
-  bookshelf: { title: "ספריית כיס", note: "שמונה ספרים ותירוץ אחד לא לישון", price: 500, minDay: 8 },
-  aquarium: { title: "אקווריום זעיר", note: "שני דגים ובועה אחת חשובה מאוד", price: 650, minDay: 8 },
-  telescope: { title: "טלסקופ חלון", note: "הכוכבים פתאום במרחק נגיעה", price: 800, minDay: 8 },
-  fireplace: { title: "אח מפצפצת", note: "חום קטן ופצפוצים בזמנים אקראיים", price: 1100, minDay: 15 },
-  projector: { title: "מקרן גלקסיות", note: "התקרה הופכת לשמיים, בלחיצה", price: 1400, minDay: 15 },
-  icecream: { title: "מכונת גלידה", note: "שלושה כדורים, בלי שאלות מיותרות", price: 1800, minDay: 15 },
+export const defaultState: GameState = createDefaultState();
+
+export const decorMeta: Record<DecorKey, { title: string; note: string; price: number; unlockStage: StageId }> = {
+  lamp: { title: "מנורת כוכבים", note: "אור רך שנדלק בערב", price: 120, unlockStage: "baby" },
+  poster: { title: "פוסטר גיבורים", note: "השראה על הקיר", price: 100, unlockStage: "baby" },
+  rug: { title: "שטיח עננים", note: "רך מתחת לרגליים", price: 150, unlockStage: "baby" },
+  plant: { title: "עציץ שמח", note: "חבר ירוק ושקט", price: 180, unlockStage: "baby" },
+  radio: { title: "רדיו רטרו", note: "פסקול קטן לחדר", price: 240, unlockStage: "baby" },
+  trophy: { title: "גביע נוצץ", note: "הוכחה שאנחנו אלופים", price: 400, unlockStage: "baby" },
+  bookshelf: { title: "ספריית כיס", note: "שמונה ספרים ותירוץ אחד לא לישון", price: 500, unlockStage: "grown" },
+  aquarium: { title: "אקווריום זעיר", note: "שני דגים ובועה אחת חשובה מאוד", price: 650, unlockStage: "grown" },
+  telescope: { title: "טלסקופ חלון", note: "הכוכבים פתאום במרחק נגיעה", price: 800, unlockStage: "grown" },
+  fireplace: { title: "אח מפצפצת", note: "חום קטן ופצפוצים בזמנים אקראיים", price: 1100, unlockStage: "mentor" },
+  projector: { title: "מקרן גלקסיות", note: "התקרה הופכת לשמיים, בלחיצה", price: 1400, unlockStage: "mentor" },
+  icecream: { title: "מכונת גלידה", note: "שלושה כדורים, בלי שאלות מיותרות", price: 1800, unlockStage: "mentor" },
 };
 
 export const streakMilestones: Array<{ days: number; reward: number }> = [
@@ -139,7 +146,7 @@ export const questPool: Record<QuestId, { title: string; target: number; reward:
   brightRoom: { title: "כל המדדים מעל 60", target: 1, reward: 30 },
 };
 
-export const weeklyQuest = { title: "שבוע של טיפול טוב", target: 20, reward: 150 };
+export const weeklyQuest = { title: "20 פעולות טיפול מועילות השבוע", target: 20, reward: 150 };
 
 const questIds = Object.keys(questPool) as QuestId[];
 const careQuests: QuestId[] = ["care4", "care8"];
@@ -163,9 +170,13 @@ export function recordPurchase(state: GameState): GameState {
 
 export function buyDecoration(state: GameState, key: DecorKey, now = Date.now()): GameState {
   if (state.decorations[key]) return state;
-  const { price, minDay } = decorMeta[key];
-  if (state.coins < price || ageDay(state, now) < minDay) return state;
+  const { price } = decorMeta[key];
+  if (state.coins < price || !isDecorUnlocked(state, key, now)) return state;
   return recordPurchase({ ...state, coins: state.coins - price, decorations: { ...state.decorations, [key]: true }, xp: state.xp + 15 });
+}
+
+export function isDecorUnlocked(state: GameState, key: DecorKey, now = Date.now()) {
+  return stageOrder.indexOf(currentStage(state, now)) >= stageOrder.indexOf(decorMeta[key].unlockStage);
 }
 
 export function claimStreakMilestone(state: GameState, days: number): GameState {
@@ -228,8 +239,6 @@ export const stageUnlocks: Record<StageId, string> = {
   legend: "הכול פתוח: החדר מלא, החנות ריקה, והשכונה כבר מספרת על זה סיפורים",
 };
 
-const stageIds: StageId[] = ["baby", "kid", "teen", "grown", "mentor", "legend"];
-
 export function ageDay(state: GameState, now = Date.now()) {
   return Math.max(1, Math.floor((now - state.birthAt) / DAY) + 1);
 }
@@ -246,9 +255,9 @@ export function currentStage(state: GameState, now = Date.now()): StageId {
 
 export function nextStage(state: GameState, now = Date.now()) {
   const stage = currentStage(state, now);
-  const last = stageIds[stageIds.length - 1];
+  const last = stageOrder[stageOrder.length - 1];
   if (stage === last) return { id: stage, target: stageMeta[last].minXp, progress: 100, xpProgress: 100, dayProgress: 100 };
-  const next = stageIds[stageIds.indexOf(stage) + 1];
+  const next = stageOrder[stageOrder.indexOf(stage) + 1];
   const start = stageMeta[stage].minXp;
   const target = stageMeta[next].minXp;
   const xpProgress = clamp(((state.xp - start) / (target - start)) * 100);
@@ -323,48 +332,55 @@ export function performCareAction(state: GameState, action: ActionKey, now = Dat
   const cozy = state.personaBuild === "cozy";
   const comic = state.personaBuild === "comic";
   const napStart = action === "sleep" && !state.sleeping;
-  const kinds = state.dailyActionKinds.includes(action) ? state.dailyActionKinds : [...state.dailyActionKinds, action];
+  const meaningful = action === "feed" ? state.fullness < 90
+    : action === "sleep" ? !state.sleeping && state.energy < 90
+    : action === "clean" ? state.hygiene < 90 || state.poop > 0
+    : state.mood < 90;
+  const kinds = !meaningful || state.dailyActionKinds.includes(action) ? state.dailyActionKinds : [...state.dailyActionKinds, action];
+  const actionCount = state.actions + (meaningful ? 1 : 0);
   const next: GameState = {
     ...state,
-    xp: state.xp + usefulCare,
-    actions: state.actions + 1,
-    careScore: clamp(state.careScore + Math.max(3, usefulCare / 2)),
+    xp: state.xp + (meaningful ? usefulCare : 0),
+    actions: actionCount,
+    careScore: meaningful ? clamp(state.careScore + Math.max(3, usefulCare / 2)) : state.careScore,
     lastSeen: now,
     sleeping: action === "sleep" ? !state.sleeping : false,
     sleepingUntil: napStart ? now + (night ? 60 : 30) * (cozy ? 1.5 : 1) * 60_000 : 0,
     napBonus: napStart ? (night ? 30 : 15) : action === "sleep" || state.sleeping ? 0 : state.napBonus,
     dailyActionKinds: kinds,
-    weeklyProgress: state.weeklyProgress + 1,
+    weeklyProgress: state.weeklyProgress + (meaningful ? 1 : 0),
     personality: { ...state.personality },
     questProgress: { ...state.questProgress },
   };
   if (action === "feed") {
     next.fullness = clamp(state.fullness + 24); next.energy = clamp(state.energy + 3);
-    next.personality.cozy += 1;
+    if (meaningful) next.personality.cozy += 1;
   }
   if (action === "sleep") {
     next.energy = clamp(state.energy + (state.sleeping ? 0 : night ? 10 : 5));
     next.fullness = clamp(state.fullness - (state.sleeping ? 0 : 2));
-    next.personality.cozy += 2;
+    if (meaningful) next.personality.cozy += 2;
   }
   if (action === "clean") {
     next.hygiene = 100; next.poop = 0; next.nextMessAt = now + 5.5 * HOUR;
     next.sick = state.sick;
-    next.personality.curious += 1;
+    if (meaningful) next.personality.curious += 1;
   }
   if (action === "play") {
     next.mood = clamp(state.mood + 25 + (comic ? 6 : 0)); next.energy = clamp(state.energy - 6); next.fullness = clamp(state.fullness - 3);
-    next.personality.comic += 2;
+    if (meaningful) next.personality.comic += 2;
   }
-  next.questProgress.care4 = (state.questProgress.care4 ?? 0) + 1;
-  next.questProgress.care8 = (state.questProgress.care8 ?? 0) + 1;
-  next.questProgress.fullSet = kinds.length;
-  if (action === "clean") next.questProgress.cleanTwice = (state.questProgress.cleanTwice ?? 0) + 1;
-  if (napStart && hour >= 20) next.questProgress.bedtime = 1;
-  if (next.mood >= 85) next.questProgress.happyPeak = 1;
-  if (next.fullness >= 60 && next.energy >= 60 && next.hygiene >= 60 && next.mood >= 60) next.questProgress.brightRoom = 1;
-  if (usefulCare > 4 && next.actions % 6 === 0) next.coins += 12;
-  if (comic && next.actions % 4 === 0) next.coins += 5;
+  if (meaningful) {
+    next.questProgress.care4 = (state.questProgress.care4 ?? 0) + 1;
+    next.questProgress.care8 = (state.questProgress.care8 ?? 0) + 1;
+    next.questProgress.fullSet = kinds.length;
+    if (action === "clean") next.questProgress.cleanTwice = (state.questProgress.cleanTwice ?? 0) + 1;
+    if (napStart && hour >= 20) next.questProgress.bedtime = 1;
+    if (next.mood >= 85) next.questProgress.happyPeak = 1;
+    if (next.fullness >= 60 && next.energy >= 60 && next.hygiene >= 60 && next.mood >= 60) next.questProgress.brightRoom = 1;
+    if (usefulCare > 4 && next.actions % 6 === 0) next.coins += 12;
+    if (comic && next.actions % 4 === 0) next.coins += 5;
+  }
   return next;
 }
 
