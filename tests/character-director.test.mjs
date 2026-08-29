@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCharacterPrompt, buildOpenRouterCharacterRequest, buildRoomUpgradePrompt, characterStorageKey, characterVisuals, decorSetKey, roomStorageKey } from "../src/characterDirector.ts";
+import { buildCharacterPrompt, buildOpenRouterCharacterRequest, buildRoomUpgradePrompt, characterStorageKey, characterVisuals, decorPrompt, decorSetKey, roomStorageKey, stageFlair } from "../src/characterDirector.ts";
 
 test("master prompt creates one transparent canonical game character", () => {
   const prompt = buildCharacterPrompt("baby", "נועה", "master");
@@ -67,4 +67,85 @@ test("room upgrade prompt edits the same room and adds only the owned decoration
   assert.match(prompt, /no text/);
   assert.doesNotMatch(prompt, /cloud-shaped rug/);
   assert.doesNotMatch(prompt, /potted plant/);
+});
+
+test("decor prompts cover every decoration the shop can sell", () => {
+  const expected = ["lamp", "poster", "rug", "plant", "radio", "trophy", "bookshelf", "aquarium", "telescope", "fireplace", "projector", "icecream"];
+  assert.deepEqual(Object.keys(decorPrompt).sort(), [...expected].sort());
+  for (const key of expected) {
+    assert.equal(typeof decorPrompt[key], "string", `${key} must have a prompt phrase`);
+    assert.ok(decorPrompt[key].trim().length > 8, `${key} phrase must be descriptive`);
+  }
+});
+
+test("new decorations read as believable room objects", () => {
+  assert.match(decorPrompt.bookshelf, /bookshelf/);
+  assert.match(decorPrompt.aquarium, /fish/);
+  assert.match(decorPrompt.telescope, /telescope/);
+  assert.match(decorPrompt.fireplace, /safely enclosed/);
+  assert.match(decorPrompt.projector, /star patterns/);
+  assert.match(decorPrompt.icecream, /ice-cream machine/);
+});
+
+test("character prompt without a stage carries no stage flair", () => {
+  const prompt = buildCharacterPrompt("person", "דנה", "master");
+  assert.doesNotMatch(prompt, /Stage presentation only/);
+  for (const flair of Object.values(stageFlair)) {
+    assert.doesNotMatch(prompt, new RegExp(flair.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.match(prompt, /Identity is the highest priority/);
+  assert.match(prompt, /canonical master design/);
+  assert.match(prompt, /Transparent background/);
+});
+
+test("stage flair is appended without loosening identity preservation", () => {
+  const prompt = buildCharacterPrompt("pet", "פיץ", "midnight", "legend");
+  assert.ok(prompt.includes(stageFlair.legend), "legend flair sentence must be present");
+  assert.match(prompt, /golden champion aura/);
+  assert.match(prompt, /Identity is the highest priority: preserve face, age/);
+  assert.match(prompt, /Preserve the exact species, breed cues/);
+  assert.match(prompt, /never changing age, species, or identity/);
+  assert.match(prompt, /Transparent background/);
+});
+
+test("every stage has flair that keeps age and species locked", () => {
+  const stages = ["baby", "kid", "teen", "grown", "mentor", "legend"];
+  assert.deepEqual(Object.keys(stageFlair).sort(), [...stages].sort());
+  for (const stage of stages) {
+    assert.match(stageFlair[stage], /never changing age, species, or identity/, `${stage} flair must keep identity locked`);
+    const prompt = buildCharacterPrompt("baby", "נועה", "sunrise", stage);
+    assert.ok(prompt.includes(stageFlair[stage]));
+    assert.match(prompt, /Preserve the exact baby age/);
+  }
+});
+
+test("OpenRouter request forwards the optional stage into the prompt", () => {
+  const withStage = buildOpenRouterCharacterRequest({
+    model: "openai/gpt-image-2",
+    references: ["data:image/webp;base64,master"],
+    kind: "person",
+    name: "דנה",
+    visual: "sunrise",
+    stage: "mentor",
+  });
+  assert.ok(withStage.prompt.includes(stageFlair.mentor));
+  const withoutStage = buildOpenRouterCharacterRequest({
+    model: "openai/gpt-image-2",
+    references: ["data:image/webp;base64,master"],
+    kind: "person",
+    name: "דנה",
+    visual: "sunrise",
+  });
+  assert.doesNotMatch(withoutStage.prompt, /Stage presentation only/);
+});
+
+test("room upgrade prompt embeds phrases for the new decorations too", () => {
+  const prompt = buildRoomUpgradePrompt("sunrise", ["fireplace", "aquarium", "icecream"]);
+  assert.ok(prompt.includes(decorPrompt.fireplace));
+  assert.ok(prompt.includes(decorPrompt.aquarium));
+  assert.ok(prompt.includes(decorPrompt.icecream));
+  assert.match(prompt, /gentle glowing fire, safely enclosed/);
+  assert.match(prompt, /peach-and-coral key light/);
+  assert.doesNotMatch(prompt, /galaxy projector/);
+  assert.doesNotMatch(prompt, /wooden tripod/);
 });

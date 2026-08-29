@@ -279,6 +279,384 @@ function TrophyArt() {
   );
 }
 
+function BookshelfArt() {
+  return (
+    <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
+      <defs>
+        <linearGradient id="bookshelfCaseGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#eab883" />
+          <stop offset=".55" stopColor="#c98a4c" />
+          <stop offset="1" stopColor="#95602c" />
+        </linearGradient>
+        <linearGradient id="bookshelfBackGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#7b5230" />
+          <stop offset="1" stopColor="#553520" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="32" cy="57.4" rx="19.4" ry="3.2" fill={ink} opacity=".22" />
+      <g fill={ink} opacity=".34">
+        <rect x="8.4" y="8.4" width="47.2" height="48.2" rx="7" />
+      </g>
+      <rect x="10" y="10" width="44" height="45" rx="5.4" fill="url(#bookshelfCaseGrad)" />
+      <rect x="13.4" y="13.4" width="37.2" height="38.2" rx="2.8" fill="url(#bookshelfBackGrad)" />
+      <rect x="10.4" y="10.4" width="3.8" height="44.2" rx="1.9" fill="#ffe3bd" opacity=".32" />
+      <rect x="49.8" y="10.4" width="3.8" height="44.2" rx="1.9" fill="#7c4d21" opacity=".38" />
+      <g>
+        <rect x="16.4" y="16.8" width="4.8" height="14.8" rx="1.2" fill="#e2645c" />
+        <rect x="21.8" y="18.4" width="4" height="13.2" rx="1.1" fill="#f2a44f" />
+        <rect x="26.4" y="15.8" width="5.2" height="15.8" rx="1.2" fill="#5aa9e6" />
+        <rect x="32.2" y="17.4" width="4.2" height="14.2" rx="1.1" fill="#a882e0" />
+        <g transform="rotate(15 38.4 31.6)">
+          <rect x="38.4" y="16.6" width="4.6" height="15" rx="1.2" fill="#63bf8e" />
+          <rect x="39.2" y="18.6" width="3" height="1.3" rx=".65" fill="#f4fff8" opacity=".7" />
+          <rect x="39.2" y="28.4" width="3" height="1.3" rx=".65" fill="#f4fff8" opacity=".55" />
+        </g>
+        <g fill="#fff6e4" opacity=".6">
+          <rect x="17.2" y="19" width="3.2" height="1.3" rx=".65" />
+          <rect x="17.2" y="28.4" width="3.2" height="1.3" rx=".65" />
+          <rect x="27.2" y="18.2" width="3.6" height="1.3" rx=".65" />
+          <rect x="27.2" y="28.4" width="3.6" height="1.3" rx=".65" />
+          <rect x="32.9" y="19.6" width="2.8" height="1.2" rx=".6" />
+        </g>
+      </g>
+      <rect x="12.2" y="31.2" width="39.6" height="3.6" rx="1.8" fill="#e0aa70" />
+      <rect x="12.2" y="33.2" width="39.6" height="1.6" rx=".8" fill="#8d5f2c" opacity=".5" />
+      <g>
+        <rect x="16.4" y="35.4" width="5.2" height="14.4" rx="1.2" fill="#f4d06a" />
+        <rect x="22.2" y="36.8" width="4.2" height="13" rx="1.1" fill="#63bf8e" />
+        <rect x="27" y="34.6" width="4.4" height="15.2" rx="1.2" fill="#e2645c" />
+        <rect x="32" y="36" width="5.4" height="13.8" rx="1.2" fill="#5aa9e6" />
+        <rect x="38" y="35" width="4.2" height="14.8" rx="1.1" fill="#f2a44f" />
+        <rect x="42.8" y="37" width="4.6" height="12.8" rx="1.2" fill="#a882e0" />
+        <g fill="#fff6e4" opacity=".6">
+          <rect x="17.2" y="37.6" width="3.6" height="1.3" rx=".65" />
+          <rect x="17.2" y="46.6" width="3.6" height="1.3" rx=".65" />
+          <rect x="27.8" y="36.8" width="2.8" height="1.3" rx=".65" />
+          <rect x="32.8" y="38.2" width="3.8" height="1.3" rx=".65" />
+          <rect x="43.6" y="39.2" width="3" height="1.3" rx=".65" />
+        </g>
+      </g>
+      <rect x="12.2" y="49.6" width="39.6" height="3.6" rx="1.8" fill="#e0aa70" />
+      <rect x="12.2" y="51.6" width="39.6" height="1.6" rx=".8" fill="#8d5f2c" opacity=".5" />
+      <path d={s4(11.4, 9.2, 2.6)} fill="#ffeccb" opacity=".85" />
+    </svg>
+  );
+}
+
+function AquariumArt() {
+  return (
+    <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
+      <defs>
+        <linearGradient id="aquariumWaterGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#a6ecf8" />
+          <stop offset=".5" stopColor="#4aa8dd" />
+          <stop offset="1" stopColor="#2a6db1" />
+        </linearGradient>
+        <linearGradient id="aquariumGlassGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#e6fbff" />
+          <stop offset="1" stopColor="#9fcfe4" />
+        </linearGradient>
+        <linearGradient id="aquariumStandGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#d29457" />
+          <stop offset="1" stopColor="#8c5729" />
+        </linearGradient>
+        <linearGradient id="aquariumFishGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ffd08a" />
+          <stop offset="1" stopColor="#f0813a" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="32" cy="57.4" rx="18.4" ry="3.2" fill={ink} opacity=".22" />
+      <g fill={ink} opacity=".34">
+        <ellipse cx="32" cy="29" rx="24.6" ry="20.4" />
+        <rect x="14.4" y="43.4" width="35.2" height="12" rx="5" />
+      </g>
+      <rect x="16" y="44.6" width="32" height="9.4" rx="4" fill="url(#aquariumStandGrad)" />
+      <rect x="18.4" y="46.6" width="9.6" height="2.4" rx="1.2" fill="#f3ceaa" opacity=".45" />
+      <ellipse cx="32" cy="29" rx="23" ry="19" fill="url(#aquariumGlassGrad)" />
+      <ellipse cx="32" cy="29" rx="20" ry="16" fill="url(#aquariumWaterGrad)" />
+      <ellipse cx="32" cy="20.6" rx="17.2" ry="3.4" fill="#e8fbff" opacity=".32" />
+      <path d="M14.6 36.9c3.9-2.8 7.9.6 11.8-.6 4.4-1.4 8.6 1.6 12.8.2 3.4-1.2 7-.6 10.2.4A20 16 0 0 1 14.6 36.9Z" fill="#ecca92" />
+      <g fill="#c9a271" opacity=".55">
+        <circle cx="20.6" cy="38.8" r="1.4" />
+        <circle cx="28.4" cy="39.6" r="1.1" />
+        <circle cx="37.6" cy="39.2" r="1.3" />
+        <circle cx="44.4" cy="38.6" r="1" />
+      </g>
+      <g transform="translate(20.6 36.6)">
+        <path d={leaf} transform="rotate(-16) scale(.5)" fill="#2f8a55" />
+        <path d={leaf} transform="rotate(15) scale(.42)" fill="#54bd7c" />
+      </g>
+      <g transform="translate(43.8 36.8)">
+        <path d={leaf} transform="rotate(12) scale(.36)" fill="#3f9a63" />
+      </g>
+      <g>
+        <path d="M23.4 27.8 16.8 23.2v9.4z" fill="#ef8c3f" />
+        <path d="M28 22.4c2 .4 3.2 1.8 3.6 3.6l-5.2 1z" fill="#f9ad5c" />
+        <ellipse cx="29.4" cy="28" rx="6.6" ry="4.8" fill="url(#aquariumFishGrad)" />
+        <ellipse cx="27.6" cy="26.4" rx="3" ry="1.7" fill="#fff0d4" opacity=".55" />
+        <circle cx="32.6" cy="26.6" r="1.7" fill="#fdfbff" />
+        <circle cx="33.1" cy="26.7" r=".85" fill={ink} />
+        <path d="M31.6 30c1.4.9 2.7.9 3.9 0-.5 1.5-3.3 1.6-3.9 0Z" fill="#c25c25" />
+      </g>
+      <g fill="#eafcff">
+        <circle cx="40.8" cy="21.4" r="2.1" opacity=".85" />
+        <circle cx="44.2" cy="16.8" r="1.4" opacity=".7" />
+        <circle cx="39.4" cy="15.2" r="1" opacity=".6" />
+      </g>
+      <ellipse cx="22.8" cy="18.6" rx="6.4" ry="3" transform="rotate(-34 22.8 18.6)" fill="#ffffff" opacity=".34" />
+      <path d={s4(50.4, 13.6, 2.4)} fill="#eafcff" opacity=".8" />
+    </svg>
+  );
+}
+
+function TelescopeArt() {
+  return (
+    <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
+      <defs>
+        <linearGradient id="telescopeTubeGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#9adcf5" />
+          <stop offset=".5" stopColor="#4a86c9" />
+          <stop offset="1" stopColor="#28518f" />
+        </linearGradient>
+        <linearGradient id="telescopeTripodGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#d9a86e" />
+          <stop offset="1" stopColor="#8a5a2c" />
+        </linearGradient>
+        <radialGradient id="telescopeLensGrad" cx="50%" cy="50%" r="60%">
+          <stop offset="0" stopColor="#fffbe6" />
+          <stop offset="1" stopColor="#ffce67" />
+        </radialGradient>
+      </defs>
+      <ellipse cx="32" cy="57" rx="19.6" ry="3.2" fill={ink} opacity=".22" />
+      <g fill={ink} opacity=".34">
+        <path d="M28.6 30.4h6.8l3.8 26h-6.6z" />
+        <path d="M28.4 30.4h5.4L25 56.4h-5.6z" />
+        <path d="M30.2 30.4h5.4L45 56.4h5.6z" />
+        <circle cx="32" cy="32" r="6.4" />
+        <g transform="rotate(38 32 32)">
+          <rect x="22.6" y="6.4" width="18.8" height="42.4" rx="9.4" />
+        </g>
+      </g>
+      <path d="M30.2 31.6h3.6l3.2 23.2h-3.8z" fill="#8a5a2c" />
+      <path d="M29.4 31.6h4.2L25.2 54.8h-4.4z" fill="url(#telescopeTripodGrad)" />
+      <path d="M30.4 31.6h4.2L43.2 54.8h-4.4z" fill="url(#telescopeTripodGrad)" />
+      <rect x="24" y="44.6" width="16" height="2.8" rx="1.4" fill="#b9803f" />
+      <g fill="#5c3b20">
+        <ellipse cx="22.9" cy="55" rx="2.8" ry="1.4" />
+        <ellipse cx="41.1" cy="55" rx="2.8" ry="1.4" />
+        <ellipse cx="34.8" cy="55" rx="2.4" ry="1.2" />
+      </g>
+      <g transform="rotate(38 32 32)">
+        <rect x="25.4" y="11" width="13.2" height="30" rx="6.6" fill="url(#telescopeTubeGrad)" />
+        <rect x="27.2" y="13.4" width="3.2" height="25.4" rx="1.6" fill="#dcf4ff" opacity=".5" />
+        <rect x="36" y="13.4" width="2" height="25.4" rx="1" fill="#173b6d" opacity=".35" />
+        <rect x="24.8" y="23.6" width="14.4" height="4.2" rx="2.1" fill="#f0b64f" />
+        <rect x="24.8" y="26" width="14.4" height="1.8" rx=".9" fill="#b97c22" opacity=".45" />
+        <rect x="23.6" y="8.4" width="16.8" height="6.6" rx="3.3" fill="#f0b64f" />
+        <ellipse cx="32" cy="11.7" rx="6.2" ry="2.5" fill="url(#telescopeLensGrad)" />
+        <ellipse cx="30.2" cy="11.2" rx="2.2" ry="1" fill="#fffdf2" opacity=".8" />
+        <rect x="28.4" y="38.6" width="7.2" height="7.8" rx="2.8" fill="#3b3450" />
+        <rect x="29.6" y="40" width="2" height="4.8" rx="1" fill="#8d84ac" opacity=".7" />
+      </g>
+      <circle cx="32" cy="32" r="5" fill="#4d445f" />
+      <circle cx="32" cy="30.8" r="2" fill="#9a92b8" opacity=".65" />
+      <path d={star5} transform="translate(45.6 14.2) scale(.36)" fill="#fff6cf" />
+      <path d={s4(52.6, 8.6, 2.6)} fill="#fff3bf" opacity=".9" />
+      <path d={s4(39.4, 6.8, 1.8)} fill="#fff3bf" opacity=".75" />
+    </svg>
+  );
+}
+
+function FireplaceArt() {
+  return (
+    <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
+      <defs>
+        <radialGradient id="fireplaceGlowGrad" cx="50%" cy="50%" r="50%">
+          <stop offset="0" stopColor="#ffd08c" stopOpacity=".62" />
+          <stop offset=".55" stopColor="#ffab5a" stopOpacity=".24" />
+          <stop offset="1" stopColor="#ff8a3d" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="fireplaceStoneGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#d8cde2" />
+          <stop offset="1" stopColor="#8f81a6" />
+        </linearGradient>
+        <linearGradient id="fireplaceMantelGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#dda164" />
+          <stop offset="1" stopColor="#8f5a2b" />
+        </linearGradient>
+        <linearGradient id="fireplaceFlameGrad" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0" stopColor="#ff7a3c" />
+          <stop offset=".55" stopColor="#ffc44f" />
+          <stop offset="1" stopColor="#fff3bb" />
+        </linearGradient>
+      </defs>
+      <circle cx="32" cy="38" r="30" fill="url(#fireplaceGlowGrad)" />
+      <ellipse cx="32" cy="57.6" rx="21.4" ry="3.2" fill={ink} opacity=".22" />
+      <g fill={ink} opacity=".34">
+        <rect x="7.4" y="11.4" width="49.2" height="45.2" rx="7.4" />
+      </g>
+      <rect x="9" y="17" width="46" height="38" rx="5.6" fill="url(#fireplaceStoneGrad)" />
+      <g fill="#f2ebf8" opacity=".3">
+        <rect x="11.6" y="21.4" width="9.6" height="4" rx="2" />
+        <rect x="42.8" y="21.4" width="9.6" height="4" rx="2" />
+        <rect x="11.6" y="28.4" width="6.4" height="4" rx="2" />
+        <rect x="46" y="28.4" width="6.4" height="4" rx="2" />
+        <rect x="11.6" y="35.4" width="6.4" height="4" rx="2" />
+        <rect x="46" y="35.4" width="6.4" height="4" rx="2" />
+      </g>
+      <path d="M19 52V34.4a13 13 0 0 1 26 0V52a2.4 2.4 0 0 1-2.4 2.4H21.4A2.4 2.4 0 0 1 19 52Z" fill="#382e4d" />
+      <path d="M21.4 52V34.8a10.6 10.6 0 0 1 21.2 0V52Z" fill="#241d38" />
+      <ellipse cx="32" cy="44" rx="15" ry="11.6" fill="url(#fireplaceGlowGrad)" />
+      <g>
+        <rect x="22.4" y="46.4" width="19.2" height="5.4" rx="2.7" transform="rotate(-6 32 49.1)" fill="#7a4a2a" />
+        <rect x="24.6" y="43" width="15" height="4.8" rx="2.4" transform="rotate(7 32.1 45.4)" fill="#96603a" />
+        <ellipse cx="24" cy="47.4" rx="1.8" ry="2.2" fill="#c99263" opacity=".8" />
+        <ellipse cx="40.2" cy="44.6" rx="1.5" ry="1.9" fill="#c99263" opacity=".7" />
+      </g>
+      <path d="M25.4 41.4c1.7 2.2 2.5 3.6 2.5 5.1 0 2-1.2 3.3-2.5 3.3s-2.5-1.3-2.5-3.3c0-1.5.8-2.9 2.5-5.1Z" fill="#ffab4d" opacity=".9" />
+      <path d="M38.6 41.4c1.7 2.2 2.5 3.6 2.5 5.1 0 2-1.2 3.3-2.5 3.3s-2.5-1.3-2.5-3.3c0-1.5.8-2.9 2.5-5.1Z" fill="#ff9a42" opacity=".85" />
+      <path d="M32 29.6c4.4 5.4 6.4 8.6 6.4 12.4 0 4.8-2.9 8-6.4 8s-6.4-3.2-6.4-8c0-3.8 2-7 6.4-12.4Z" fill="url(#fireplaceFlameGrad)" />
+      <path d="M32 36.8c2.1 2.6 3 4.2 3 5.9 0 2.3-1.3 3.8-3 3.8s-3-1.5-3-3.8c0-1.7.9-3.3 3-5.9Z" fill="#fff5cd" opacity=".92" />
+      <rect x="10.6" y="51.2" width="42.8" height="5.2" rx="2.6" fill="#c0b2d0" />
+      <rect x="10.6" y="53.6" width="42.8" height="2.8" rx="1.4" fill="#8a7ba2" opacity=".45" />
+      <rect x="6.6" y="11.4" width="50.8" height="7.4" rx="3.7" fill="url(#fireplaceMantelGrad)" />
+      <rect x="6.6" y="15.6" width="50.8" height="3.2" rx="1.6" fill="#8a5527" opacity=".45" />
+      <rect x="10.4" y="12.8" width="14" height="2.4" rx="1.2" fill="#ffe0bb" opacity=".5" />
+      <path d={s4(32, 24.6, 2.4)} fill="#ffe7a8" opacity=".85" />
+      <path d={s4(24.4, 30.2, 1.6)} fill="#ffe7a8" opacity=".7" />
+      <path d={s4(40, 28.4, 1.8)} fill="#ffe7a8" opacity=".7" />
+    </svg>
+  );
+}
+
+function ProjectorArt() {
+  return (
+    <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
+      <defs>
+        <linearGradient id="projectorConeGrad" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0" stopColor="#e4d7ff" stopOpacity=".62" />
+          <stop offset=".55" stopColor="#bda8ff" stopOpacity=".26" />
+          <stop offset="1" stopColor="#9f8cff" stopOpacity=".05" />
+        </linearGradient>
+        <linearGradient id="projectorBodyGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#7a6bd6" />
+          <stop offset=".55" stopColor="#4d3f9c" />
+          <stop offset="1" stopColor="#2e2566" />
+        </linearGradient>
+        <radialGradient id="projectorLensGrad" cx="50%" cy="40%" r="60%">
+          <stop offset="0" stopColor="#fdfbff" />
+          <stop offset=".55" stopColor="#a9e6ff" />
+          <stop offset="1" stopColor="#5aa9e6" />
+        </radialGradient>
+      </defs>
+      <path d="M28.2 38 10 9.4h44L35.8 38Z" fill="url(#projectorConeGrad)" />
+      <g fill="#fff6d2">
+        <path d={star5} transform="translate(32 12.4) scale(.3)" opacity=".95" />
+        <path d={star5} transform="translate(19.6 17.6) scale(.22)" opacity=".8" />
+        <path d={s4(45.4, 14.6, 2.6)} opacity=".85" />
+        <path d={s4(24.6, 24.4, 2)} opacity=".8" />
+        <path d={s4(41.2, 23.2, 1.8)} opacity=".75" />
+        <path d={s4(32.6, 30.4, 1.5)} opacity=".7" />
+        <circle cx="14.4" cy="13.6" r="1.1" opacity=".7" />
+        <circle cx="50.8" cy="19.4" r="1" opacity=".65" />
+        <circle cx="30.4" cy="19.6" r=".9" opacity=".7" />
+        <circle cx="37.4" cy="33.2" r=".8" opacity=".6" />
+        <circle cx="26.8" cy="34.4" r=".8" opacity=".6" />
+      </g>
+      <ellipse cx="32" cy="57.4" rx="17.4" ry="3.2" fill={ink} opacity=".22" />
+      <g fill={ink} opacity=".34">
+        <rect x="16.4" y="34.4" width="31.2" height="21.8" rx="9.4" />
+      </g>
+      <rect x="18.6" y="52.4" width="7.2" height="4.2" rx="2.1" fill="#3b3450" />
+      <rect x="38.2" y="52.4" width="7.2" height="4.2" rx="2.1" fill="#3b3450" />
+      <rect x="18.6" y="38.4" width="26.8" height="16.4" rx="7.4" fill="url(#projectorBodyGrad)" />
+      <rect x="21" y="41" width="4" height="11.4" rx="2" fill="#d6ccff" opacity=".32" />
+      <rect x="40.2" y="41" width="2.6" height="11.4" rx="1.3" fill="#1d1749" opacity=".35" />
+      <ellipse cx="32" cy="38.6" rx="9" ry="3.8" fill="#3b3450" />
+      <ellipse cx="32" cy="37.6" rx="7.2" ry="3" fill="url(#projectorLensGrad)" />
+      <ellipse cx="30" cy="36.8" rx="2.4" ry="1.1" fill="#fdfbff" opacity=".85" />
+      <circle cx="24.4" cy="48.4" r="2.8" fill="#79dbd0" />
+      <circle cx="24.4" cy="47.6" r="1.1" fill="#e0fffa" opacity=".7" />
+      <circle cx="39.8" cy="48.4" r="2" fill="#ffd166" />
+      <rect x="28.6" y="47.6" width="7" height="1.8" rx=".9" fill="#c8bcff" opacity=".55" />
+    </svg>
+  );
+}
+
+function IcecreamArt() {
+  return (
+    <svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true">
+      <defs>
+        <linearGradient id="icecreamBodyGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fff2f8" />
+          <stop offset=".55" stopColor="#ffd2e5" />
+          <stop offset="1" stopColor="#f3a5c8" />
+        </linearGradient>
+        <linearGradient id="icecreamMetalGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#f2f6fd" />
+          <stop offset=".5" stopColor="#d4dcee" />
+          <stop offset="1" stopColor="#a9b6d2" />
+        </linearGradient>
+        <linearGradient id="icecreamSwirlGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fffaf3" />
+          <stop offset="1" stopColor="#ffbcd8" />
+        </linearGradient>
+        <linearGradient id="icecreamConeGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#f8d69f" />
+          <stop offset="1" stopColor="#c98f4c" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="32" cy="58.2" rx="20.4" ry="3.2" fill={ink} opacity=".22" />
+      <g fill={ink} opacity=".34">
+        <rect x="17.4" y="2.8" width="29.2" height="9.4" rx="4.7" />
+        <rect x="10.4" y="6.4" width="43.2" height="29.2" rx="8.6" />
+        <rect x="13.4" y="33" width="10.2" height="20" rx="4" />
+        <rect x="40.4" y="33" width="10.2" height="20" rx="4" />
+        <rect x="9.4" y="49.6" width="45.2" height="8.4" rx="4.2" />
+      </g>
+      <rect x="15" y="34" width="7" height="17.8" rx="2.8" fill="url(#icecreamMetalGrad)" />
+      <rect x="42" y="34" width="7" height="17.8" rx="2.8" fill="url(#icecreamMetalGrad)" />
+      <rect x="19" y="4.4" width="26" height="6.6" rx="3.3" fill="#a9e6da" />
+      <rect x="19" y="8" width="26" height="3" rx="1.5" fill="#5eb6a8" opacity=".45" />
+      <rect x="12" y="8" width="40" height="26" rx="7.4" fill="url(#icecreamBodyGrad)" />
+      <rect x="14.6" y="10.6" width="5" height="20.8" rx="2.5" fill="#fffdff" opacity=".55" />
+      <rect x="46.4" y="10.6" width="3.4" height="20.8" rx="1.7" fill="#d97ba7" opacity=".3" />
+      <rect x="17.6" y="12.6" width="28.8" height="12.6" rx="4.2" fill="#fff9fc" opacity=".9" />
+      <rect x="19.4" y="17.4" width="25.2" height="6.4" rx="3.2" fill="#ffb3d2" />
+      <rect x="20.6" y="18.6" width="8.6" height="2" rx="1" fill="#fff2f8" opacity=".7" />
+      <g transform="rotate(-32 46 27)">
+        <rect x="46" y="25.2" width="11" height="3.6" rx="1.8" fill="#f6c96a" />
+      </g>
+      <circle cx="55.3" cy="21.2" r="2.8" fill="#f0a84f" />
+      <circle cx="54.6" cy="20.4" r="1" fill="#ffeec6" opacity=".75" />
+      <circle cx="23.6" cy="29.6" r="3.2" fill="#a9e6da" />
+      <circle cx="23.6" cy="28.8" r="1.2" fill="#eafffb" opacity=".75" />
+      <circle cx="40.4" cy="29.6" r="3.2" fill="#ffd166" />
+      <circle cx="40.4" cy="28.8" r="1.2" fill="#fff5d6" opacity=".75" />
+      <path d="M27.4 34h9.2l-1.8 5.4h-5.6z" fill="url(#icecreamMetalGrad)" />
+      <rect x="28.4" y="37.6" width="7.2" height="2.6" rx="1.3" fill="#a9b6d2" />
+      <path d="M24.4 44.2h15.2L32 52.4Z" fill="url(#icecreamConeGrad)" />
+      <g fill="#a97434" opacity=".38">
+        <rect x="30.6" y="44.4" width="1.1" height="8" rx=".55" transform="rotate(14 31.2 44.4)" />
+        <rect x="32.4" y="44.4" width="1.1" height="8" rx=".55" transform="rotate(-14 32.9 44.4)" />
+        <rect x="26.9" y="46.6" width="10.2" height="1.1" rx=".55" />
+      </g>
+      <ellipse cx="32" cy="43.4" rx="7.6" ry="3.4" fill="url(#icecreamSwirlGrad)" />
+      <ellipse cx="32" cy="40.6" rx="5.8" ry="3" fill="url(#icecreamSwirlGrad)" />
+      <ellipse cx="32.4" cy="38.2" rx="3.8" ry="2.4" fill="url(#icecreamSwirlGrad)" />
+      <g fill="#fffdf8" opacity=".6">
+        <ellipse cx="28.4" cy="42.6" rx="2.6" ry="1.2" />
+        <ellipse cx="29.4" cy="40" rx="2" ry="1" />
+        <ellipse cx="31.2" cy="37.6" rx="1.4" ry=".8" />
+      </g>
+      <path d={s4(48.6, 40.4, 2.4)} fill="#ffe6f1" opacity=".8" />
+      <path d={s4(15.6, 43.6, 1.8)} fill="#ffe6f1" opacity=".7" />
+    </svg>
+  );
+}
+
 export const decorArt: Record<DecorKey, ComponentType> = {
   lamp: LampArt, poster: PosterArt, rug: RugArt, plant: PlantArt, radio: RadioArt, trophy: TrophyArt,
+  bookshelf: BookshelfArt, aquarium: AquariumArt, telescope: TelescopeArt, fireplace: FireplaceArt,
+  projector: ProjectorArt, icecream: IcecreamArt,
 };

@@ -2,11 +2,12 @@ export type ThemeId = "midnight" | "sunrise" | "classic";
 export type CharacterKind = "person" | "baby" | "pet" | "";
 export type CompanionMotion = "idle" | "eat" | "play" | "sleep" | "celebrate";
 export type NeedKey = "fullness" | "energy" | "hygiene" | "mood";
-export type StageId = "baby" | "kid" | "teen" | "grown";
+export type StageId = "baby" | "kid" | "teen" | "grown" | "mentor" | "legend";
 export type PersonalityId = "curious" | "cozy" | "comic";
 export type ItemKey = "apple" | "meal" | "soap" | "medicine" | "ball";
 export type ActionKey = "feed" | "sleep" | "clean" | "play";
-export type DecorKey = "lamp" | "poster" | "rug" | "plant" | "radio" | "trophy";
+export type DecorKey = "lamp" | "poster" | "rug" | "plant" | "radio" | "trophy" | "bookshelf" | "aquarium" | "telescope" | "fireplace" | "projector" | "icecream";
+export type QuestId = "care4" | "care8" | "arcadeOne" | "arcadeTwo" | "happyPeak" | "fullSet" | "bedtime" | "cleanTwice" | "starAce" | "guessAce" | "shopping" | "brightRoom";
 
 export type GameState = {
   version: 5;
@@ -29,11 +30,18 @@ export type GameState = {
   birthAt: number;
   lastSeen: number;
   dailyKey: string;
-  questCare: number;
-  questGame: number;
-  questHappy: number;
+  dailyQuests: string[];
+  questProgress: Record<string, number>;
+  dailyActionKinds: ActionKey[];
+  weeklyKey: string;
+  weeklyProgress: number;
+  weeklyClaimed: boolean;
+  arcadePlays: number;
   claimed: string[];
   personality: Record<PersonalityId, number>;
+  personaBuild: "" | PersonalityId;
+  napBonus: number;
+  pendingNapReward: number;
   inventory: Record<ItemKey, number>;
   streak: number;
   bestStreak: number;
@@ -59,6 +67,7 @@ export const HOUR = 3_600_000;
 export const DAY = 24 * HOUR;
 export const localDayKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 export const previousLocalDayKey = (date = new Date()) => localDayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1));
+export const localWeekKey = (date = new Date()) => localDayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - ((date.getDay() + 6) % 7)));
 export const clamp = (value: number) => Math.max(0, Math.min(100, Math.round(value * 100) / 100));
 export const whole = (value: number) => Math.round(value);
 
@@ -71,9 +80,9 @@ export function absenceMessage(name: string, awayMinutes: number) {
     : awayHours < 48 ? `עברו ${awayHours} שעות`
     : awayDays < 3 ? "עברו יומיים"
     : `עברו ${awayDays} ימים`;
-  if (awayMinutes >= 24 * 60) return `${elapsed}. ${name} התגעגע. גם הרצפה, מסיבות פחות מרגשות.`;
-  if (awayMinutes >= 2 * 60) return `${elapsed}. ${name} ניהל את החדר לבד. הדוח עדיין חסוי.`;
-  return `${elapsed}. ${name} שמר לך מקום והעמיד פנים שזה לא היה געגוע.`;
+  if (awayMinutes >= 24 * 60) return `${elapsed}. אצל ${name} היה פה געגוע גדול. גם אצל הרצפה, מסיבות פחות מרגשות.`;
+  if (awayMinutes >= 2 * 60) return `${elapsed}. החדר של ${name} נוהל בעצמאות מרשימה. הדוח עדיין חסוי.`;
+  return `${elapsed}. אצל ${name} נשמר לך מקום, והגעגוע הוסתר בכישרון בינוני.`;
 }
 
 export const defaultState: GameState = {
@@ -82,8 +91,11 @@ export const defaultState: GameState = {
   xp: 0, coins: 80, careScore: 82, careMistakes: 0, actions: 0,
   poop: 0, sick: false, sleeping: false,
   birthAt: Date.now(), lastSeen: Date.now(), dailyKey: localDayKey(),
-  questCare: 0, questGame: 0, questHappy: 0, claimed: [],
-  personality: { curious: 0, cozy: 0, comic: 0 },
+  dailyQuests: [], questProgress: {}, dailyActionKinds: [],
+  weeklyKey: localWeekKey(), weeklyProgress: 0, weeklyClaimed: false,
+  arcadePlays: 0, claimed: [],
+  personality: { curious: 0, cozy: 0, comic: 0 }, personaBuild: "",
+  napBonus: 0, pendingNapReward: 0,
   inventory: { apple: 3, meal: 1, soap: 2, medicine: 1, ball: 1 },
   streak: 1, bestStreak: 1, lastVisitKey: localDayKey(), nextMessAt: Date.now() + 5.5 * HOUR,
   sleepingUntil: 0, awayMinutes: 0, memories: [], visualRevision: 1, animationSlots: {},
@@ -92,24 +104,68 @@ export const defaultState: GameState = {
   decorations: {}, claimedMilestones: [],
 };
 
-export const decorMeta: Record<DecorKey, { title: string; note: string; price: number }> = {
-  lamp: { title: "מנורת כוכבים", note: "אור רך שנדלק בערב", price: 120 },
-  poster: { title: "פוסטר גיבורים", note: "השראה על הקיר", price: 100 },
-  rug: { title: "שטיח עננים", note: "רך מתחת לרגליים", price: 150 },
-  plant: { title: "עציץ שמח", note: "חבר ירוק ושקט", price: 180 },
-  radio: { title: "רדיו רטרו", note: "פסקול קטן לחדר", price: 240 },
-  trophy: { title: "גביע נוצץ", note: "הוכחה שאנחנו אלופים", price: 400 },
+export const decorMeta: Record<DecorKey, { title: string; note: string; price: number; minDay: number }> = {
+  lamp: { title: "מנורת כוכבים", note: "אור רך שנדלק בערב", price: 120, minDay: 1 },
+  poster: { title: "פוסטר גיבורים", note: "השראה על הקיר", price: 100, minDay: 1 },
+  rug: { title: "שטיח עננים", note: "רך מתחת לרגליים", price: 150, minDay: 1 },
+  plant: { title: "עציץ שמח", note: "חבר ירוק ושקט", price: 180, minDay: 1 },
+  radio: { title: "רדיו רטרו", note: "פסקול קטן לחדר", price: 240, minDay: 1 },
+  trophy: { title: "גביע נוצץ", note: "הוכחה שאנחנו אלופים", price: 400, minDay: 1 },
+  bookshelf: { title: "ספריית כיס", note: "שמונה ספרים ותירוץ אחד לא לישון", price: 500, minDay: 8 },
+  aquarium: { title: "אקווריום זעיר", note: "שני דגים ובועה אחת חשובה מאוד", price: 650, minDay: 8 },
+  telescope: { title: "טלסקופ חלון", note: "הכוכבים פתאום במרחק נגיעה", price: 800, minDay: 8 },
+  fireplace: { title: "אח מפצפצת", note: "חום קטן ופצפוצים בזמנים אקראיים", price: 1100, minDay: 15 },
+  projector: { title: "מקרן גלקסיות", note: "התקרה הופכת לשמיים, בלחיצה", price: 1400, minDay: 15 },
+  icecream: { title: "מכונת גלידה", note: "שלושה כדורים, בלי שאלות מיותרות", price: 1800, minDay: 15 },
 };
 
 export const streakMilestones: Array<{ days: number; reward: number }> = [
   { days: 3, reward: 30 }, { days: 7, reward: 60 }, { days: 14, reward: 120 }, { days: 30, reward: 300 },
+  { days: 60, reward: 600 }, { days: 100, reward: 1200 },
 ];
 
-export function buyDecoration(state: GameState, key: DecorKey): GameState {
+export const questPool: Record<QuestId, { title: string; target: number; reward: number }> = {
+  care4: { title: "ארבע פעולות טיפול", target: 4, reward: 25 },
+  care8: { title: "יום טיפול גדול", target: 8, reward: 45 },
+  arcadeOne: { title: "סיבוב אחד במשחקייה", target: 1, reward: 35 },
+  arcadeTwo: { title: "פעמיים במשחקייה", target: 2, reward: 50 },
+  happyPeak: { title: "שמחה מעל 85", target: 1, reward: 20 },
+  fullSet: { title: "כל ארבעת סוגי הטיפול", target: 4, reward: 30 },
+  bedtime: { title: "שינה אחרי 20:00", target: 1, reward: 30 },
+  cleanTwice: { title: "פעמיים ניקיון", target: 2, reward: 25 },
+  starAce: { title: "25 כוכבים בריצה אחת", target: 1, reward: 45 },
+  guessAce: { title: "4 ניחושים מתוך 5", target: 1, reward: 45 },
+  shopping: { title: "קנייה אחת בחנות", target: 1, reward: 25 },
+  brightRoom: { title: "כל המדדים מעל 60", target: 1, reward: 30 },
+};
+
+export const weeklyQuest = { title: "שבוע של טיפול טוב", target: 20, reward: 150 };
+
+const questIds = Object.keys(questPool) as QuestId[];
+const careQuests: QuestId[] = ["care4", "care8"];
+const hashKey = (value: string) => {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash ^ value.charCodeAt(index), 0x01000193);
+  return (hash ^ (hash >>> 16)) >>> 0;
+};
+
+export function rollDailyQuests(dayKey: string, slots: number): QuestId[] {
+  const count = Math.max(1, Math.min(questIds.length, Math.floor(slots)));
+  const ranked = [...questIds].sort((a, b) => hashKey(`${dayKey}|${a}`) - hashKey(`${dayKey}|${b}`) || (a < b ? -1 : 1));
+  const care = ranked.find((id) => careQuests.includes(id)) as QuestId;
+  const picked = [care, ...ranked.filter((id) => id !== care).slice(0, count - 1)];
+  return ranked.filter((id) => picked.includes(id));
+}
+
+export function recordPurchase(state: GameState): GameState {
+  return { ...state, questProgress: { ...state.questProgress, shopping: 1 } };
+}
+
+export function buyDecoration(state: GameState, key: DecorKey, now = Date.now()): GameState {
   if (state.decorations[key]) return state;
-  const { price } = decorMeta[key];
-  if (state.coins < price) return state;
-  return { ...state, coins: state.coins - price, decorations: { ...state.decorations, [key]: true }, xp: state.xp + 15 };
+  const { price, minDay } = decorMeta[key];
+  if (state.coins < price || ageDay(state, now) < minDay) return state;
+  return recordPurchase({ ...state, coins: state.coins - price, decorations: { ...state.decorations, [key]: true }, xp: state.xp + 15 });
 }
 
 export function claimStreakMilestone(state: GameState, days: number): GameState {
@@ -118,12 +174,61 @@ export function claimStreakMilestone(state: GameState, days: number): GameState 
   return { ...state, coins: state.coins + milestone.reward, xp: state.xp + milestone.reward, claimedMilestones: [...state.claimedMilestones, days] };
 }
 
+export function recordArcadeRun(state: GameState, kind: "star" | "guess", score: number): GameState {
+  const progress: Record<string, number> = {
+    ...state.questProgress,
+    arcadeOne: (state.questProgress.arcadeOne ?? 0) + 1,
+    arcadeTwo: (state.questProgress.arcadeTwo ?? 0) + 1,
+  };
+  if (kind === "star" && score >= 25) progress.starAce = 1;
+  if (kind === "guess" && score >= 4) progress.guessAce = 1;
+  return { ...state, arcadePlays: state.arcadePlays + 1, questProgress: progress };
+}
+
+export function claimDailyQuest(state: GameState, id: QuestId): GameState {
+  const quest = questPool[id];
+  if (!quest || !state.dailyQuests.includes(id) || state.claimed.includes(id)) return state;
+  if ((state.questProgress[id] ?? 0) < quest.target) return state;
+  return { ...state, coins: state.coins + quest.reward, xp: state.xp + 8, claimed: [...state.claimed, id] };
+}
+
+export function claimWeekly(state: GameState): GameState {
+  if (state.weeklyClaimed || state.weeklyProgress < weeklyQuest.target) return state;
+  return { ...state, coins: state.coins + weeklyQuest.reward, xp: state.xp + 100, weeklyClaimed: true };
+}
+
+export const personaBuildMeta: Record<PersonalityId, { title: string; note: string }> = {
+  curious: { title: "נפש חוקרת", note: "+10% מטבעות מהמשחקייה" },
+  cozy: { title: "נשמה נעימה", note: "דעיכה איטית בשינה ותנומות ארוכות יותר" },
+  comic: { title: "קומיקאי הבית", note: "שמחה נוספת מכל משחק ומטבע צחוק כל פעולה רביעית" },
+};
+
+export function chooseBuild(state: GameState, id: PersonalityId): GameState {
+  if (state.personaBuild !== "" || state.personality[id] < 25) return state;
+  return { ...state, personaBuild: id, xp: state.xp + 20 };
+}
+
+export const arcadeRewardBonus = (state: GameState) => (state.personaBuild === "curious" ? 1.1 : 1);
+
 export const stageMeta: Record<StageId, { title: string; minXp: number; minDay: number }> = {
   baby: { title: "חדש פה", minXp: 0, minDay: 1 },
   kid: { title: "מתרגל", minXp: 160, minDay: 2 },
   teen: { title: "פורח", minXp: 420, minDay: 4 },
   grown: { title: "חבר ותיק", minXp: 850, minDay: 7 },
+  mentor: { title: "מנטור השכונה", minXp: 2600, minDay: 14 },
+  legend: { title: "אגדה מקומית", minXp: 6000, minDay: 30 },
 };
+
+export const stageUnlocks: Record<StageId, string> = {
+  baby: "ארבע פעולות הטיפול, המשחקייה והמשימות היומיות הראשונות",
+  kid: "נפתחה משימה יומית רביעית",
+  teen: "נפתח מצב הימור במשחק הניחושים",
+  grown: "נפתח המדף השני בחנות הקישוטים",
+  mentor: "נפתח מדף הקישוטים השלישי",
+  legend: "הכול פתוח: החדר מלא, החנות ריקה, והשכונה כבר מספרת על זה סיפורים",
+};
+
+const stageIds: StageId[] = ["baby", "kid", "teen", "grown", "mentor", "legend"];
 
 export function ageDay(state: GameState, now = Date.now()) {
   return Math.max(1, Math.floor((now - state.birthAt) / DAY) + 1);
@@ -131,6 +236,8 @@ export function ageDay(state: GameState, now = Date.now()) {
 
 export function currentStage(state: GameState, now = Date.now()): StageId {
   const day = ageDay(state, now);
+  if (state.xp >= 6000 && day >= 30) return "legend";
+  if (state.xp >= 2600 && day >= 14) return "mentor";
   if (state.xp >= 850 && day >= 7) return "grown";
   if (state.xp >= 420 && day >= 4) return "teen";
   if (state.xp >= 160 && day >= 2) return "kid";
@@ -139,9 +246,9 @@ export function currentStage(state: GameState, now = Date.now()): StageId {
 
 export function nextStage(state: GameState, now = Date.now()) {
   const stage = currentStage(state, now);
-  if (stage === "grown") return { id: stage, target: 850, progress: 100, xpProgress: 100, dayProgress: 100 };
-  const ids: StageId[] = ["baby", "kid", "teen", "grown"];
-  const next = ids[ids.indexOf(stage) + 1];
+  const last = stageIds[stageIds.length - 1];
+  if (stage === last) return { id: stage, target: stageMeta[last].minXp, progress: 100, xpProgress: 100, dayProgress: 100 };
+  const next = stageIds[stageIds.indexOf(stage) + 1];
   const start = stageMeta[stage].minXp;
   const target = stageMeta[next].minXp;
   const xpProgress = clamp(((state.xp - start) / (target - start)) * 100);
@@ -150,18 +257,22 @@ export function nextStage(state: GameState, now = Date.now()) {
   return { id: next, target, progress: Math.min(xpProgress, dayProgress), xpProgress, dayProgress };
 }
 
+export const arcadePayoutScale = (plays: number) => (plays < 3 ? 1 : 0.25);
+
 export function applyElapsed(state: GameState, now = Date.now()): GameState {
   const elapsedHours = Math.max(0, now - state.lastSeen) / HOUR;
   const hours = Math.min(72, elapsedHours);
+  if (now < state.lastSeen) return { ...state, lastSeen: now };
   if (hours <= 0) return state;
   const wasSleeping = state.sleeping && state.sleepingUntil > state.lastSeen;
   const sleepHours = wasSleeping ? Math.max(0, Math.min(now, state.sleepingUntil) - state.lastSeen) / HOUR : 0;
   const awakeHours = Math.max(0, hours - sleepHours);
   const illnessDrag = state.sick ? 1.4 : 1;
-  const fullness = clamp(state.fullness - sleepHours * 1.3 - awakeHours * 3.1);
+  const restfulness = state.personaBuild === "cozy" ? .9 : 1;
+  const fullness = clamp(state.fullness - sleepHours * 1.3 * restfulness - awakeHours * 3.1);
   const energy = clamp(state.energy + sleepHours * 24 - awakeHours * 2.1 * illnessDrag);
   const hygiene = clamp(state.hygiene - hours * 1.45);
-  const mood = clamp(state.mood - sleepHours * .45 - awakeHours * 1.65 * illnessDrag);
+  const mood = clamp(state.mood - sleepHours * .45 * restfulness - awakeHours * 1.65 * illnessDrag);
   const extraPoop = now >= state.nextMessAt ? Math.min(3, 1 + Math.floor((now - state.nextMessAt) / (5.5 * HOUR))) : 0;
   const poop = Math.min(3, state.poop + extraPoop);
   const values = [fullness, energy, hygiene, mood];
@@ -171,22 +282,32 @@ export function applyElapsed(state: GameState, now = Date.now()): GameState {
   const dayChanged = currentKey !== state.dailyKey;
   const consecutive = state.lastVisitKey === previousLocalDayKey(new Date(now));
   const streak = dayChanged ? (consecutive ? state.streak + 1 : 1) : state.streak;
+  const rolling = dayChanged || !state.dailyQuests.length;
+  const weekKey = localWeekKey(new Date(now));
+  const weekChanged = weekKey !== state.weeklyKey;
+  const napDone = wasSleeping && now >= state.sleepingUntil && state.napBonus > 0;
   return {
     ...state, fullness, energy, hygiene, mood, poop,
     sick: state.sick || hygiene < 12 || poop >= 3,
     sleeping: wasSleeping && now < state.sleepingUntil,
-    careScore: clamp(state.careScore - hours * (.18 + carePressure * .52 + dangerCount * 1.35)),
+    careScore: clamp(state.careScore - hours * (.18 + carePressure * .3 + dangerCount * .7)),
     careMistakes: state.careMistakes + (hours >= 1 ? dangerCount : 0),
     nextMessAt: extraPoop ? state.nextMessAt + extraPoop * 5.5 * HOUR : state.nextMessAt,
     dailyKey: currentKey,
     lastVisitKey: currentKey,
     streak,
     bestStreak: Math.max(state.bestStreak, streak),
-    questCare: dayChanged ? 0 : state.questCare,
-    questGame: dayChanged ? 0 : state.questGame,
-    questHappy: dayChanged ? 0 : state.questHappy,
-    claimed: dayChanged ? [] : state.claimed,
-    coins: dayChanged ? state.coins + 10 + 2 * Object.values(state.decorations).filter(Boolean).length : state.coins,
+    dailyQuests: rolling ? rollDailyQuests(currentKey, currentStage(state, now) === "baby" ? 3 : 4) : state.dailyQuests,
+    questProgress: rolling ? {} : state.questProgress,
+    dailyActionKinds: rolling ? [] : state.dailyActionKinds,
+    claimed: rolling ? [] : state.claimed,
+    weeklyKey: weekKey,
+    weeklyProgress: weekChanged ? 0 : state.weeklyProgress,
+    weeklyClaimed: weekChanged ? false : state.weeklyClaimed,
+    arcadePlays: dayChanged ? 0 : state.arcadePlays,
+    coins: (dayChanged ? state.coins + 10 + 2 * Object.values(state.decorations).filter(Boolean).length : state.coins) + (napDone ? state.napBonus : 0),
+    napBonus: napDone ? 0 : state.napBonus,
+    pendingNapReward: napDone ? state.napBonus : state.pendingNapReward,
     awayMinutes: hours >= .25 ? Math.round(elapsedHours * 60) : state.awayMinutes,
     lastSeen: now,
   };
@@ -196,19 +317,26 @@ const actionNeed: Record<ActionKey, NeedKey> = { feed: "fullness", sleep: "energ
 
 export function performCareAction(state: GameState, action: ActionKey, now = Date.now()): GameState {
   const need = state[actionNeed[action]];
-  const usefulCare = Math.max(3, Math.min(14, Math.round((105 - need) / 8)));
+  const usefulCare = Math.max(4, Math.min(10, Math.round((95 - need) / 9)));
   const hour = new Date(now).getHours();
   const night = hour < 7 || hour >= 20;
+  const cozy = state.personaBuild === "cozy";
+  const comic = state.personaBuild === "comic";
+  const napStart = action === "sleep" && !state.sleeping;
+  const kinds = state.dailyActionKinds.includes(action) ? state.dailyActionKinds : [...state.dailyActionKinds, action];
   const next: GameState = {
     ...state,
     xp: state.xp + usefulCare,
     actions: state.actions + 1,
-    careScore: clamp(state.careScore + Math.max(1, usefulCare / 4)),
+    careScore: clamp(state.careScore + Math.max(3, usefulCare / 2)),
     lastSeen: now,
     sleeping: action === "sleep" ? !state.sleeping : false,
-    sleepingUntil: action === "sleep" && !state.sleeping ? now + (night ? 60 : 30) * 60_000 : 0,
-    questCare: Math.min(3, state.questCare + 1),
+    sleepingUntil: napStart ? now + (night ? 60 : 30) * (cozy ? 1.5 : 1) * 60_000 : 0,
+    napBonus: napStart ? (night ? 30 : 15) : action === "sleep" || state.sleeping ? 0 : state.napBonus,
+    dailyActionKinds: kinds,
+    weeklyProgress: state.weeklyProgress + 1,
     personality: { ...state.personality },
+    questProgress: { ...state.questProgress },
   };
   if (action === "feed") {
     next.fullness = clamp(state.fullness + 24); next.energy = clamp(state.energy + 3);
@@ -221,15 +349,22 @@ export function performCareAction(state: GameState, action: ActionKey, now = Dat
   }
   if (action === "clean") {
     next.hygiene = 100; next.poop = 0; next.nextMessAt = now + 5.5 * HOUR;
-    next.sick = state.sick && state.hygiene < 20;
+    next.sick = state.sick;
     next.personality.curious += 1;
   }
   if (action === "play") {
-    next.mood = clamp(state.mood + 25); next.energy = clamp(state.energy - 6); next.fullness = clamp(state.fullness - 3);
+    next.mood = clamp(state.mood + 25 + (comic ? 6 : 0)); next.energy = clamp(state.energy - 6); next.fullness = clamp(state.fullness - 3);
     next.personality.comic += 2;
   }
-  next.questHappy = next.mood >= 85 ? 1 : state.questHappy;
-  if (usefulCare > 3 && next.actions % 6 === 0) next.coins += 12;
+  next.questProgress.care4 = (state.questProgress.care4 ?? 0) + 1;
+  next.questProgress.care8 = (state.questProgress.care8 ?? 0) + 1;
+  next.questProgress.fullSet = kinds.length;
+  if (action === "clean") next.questProgress.cleanTwice = (state.questProgress.cleanTwice ?? 0) + 1;
+  if (napStart && hour >= 20) next.questProgress.bedtime = 1;
+  if (next.mood >= 85) next.questProgress.happyPeak = 1;
+  if (next.fullness >= 60 && next.energy >= 60 && next.hygiene >= 60 && next.mood >= 60) next.questProgress.brightRoom = 1;
+  if (usefulCare > 4 && next.actions % 6 === 0) next.coins += 12;
+  if (comic && next.actions % 4 === 0) next.coins += 5;
   return next;
 }
 
