@@ -6,15 +6,28 @@ import {
   absenceMessage,
   applyElapsed,
   arcadePayoutScale,
+  arcadeRewardBonus,
   buyDecoration,
+  chooseBuild,
+  claimDailyQuest,
   claimStreakMilestone,
+  claimWeekly,
   currentStage,
   decorMeta,
   defaultState,
   localDayKey,
+  localWeekKey,
   nextStage,
   performCareAction,
+  personaBuildMeta,
+  questPool,
+  recordArcadeRun,
+  recordPurchase,
+  rollDailyQuests,
+  stageMeta,
+  stageUnlocks,
   useInventoryItem,
+  weeklyQuest,
 } from "../src/gameEngine.ts";
 
 function stateAt(now, overrides = {}) {
@@ -25,6 +38,7 @@ function stateAt(now, overrides = {}) {
     lastSeen: now,
     dailyKey: localDayKey(new Date(now)),
     lastVisitKey: localDayKey(new Date(now)),
+    weeklyKey: localWeekKey(new Date(now)),
     nextMessAt: now + 5.5 * HOUR,
     ...overrides,
   };
@@ -37,6 +51,14 @@ test("a fresh install has no forced name, animal, or completed onboarding", () =
   assert.equal(defaultState.characterKind, "");
   assert.equal(defaultState.photo, undefined);
   assert.equal(defaultState.arcadePlays, 0);
+  assert.equal(defaultState.personaBuild, "");
+  assert.equal(defaultState.napBonus, 0);
+  assert.equal(defaultState.pendingNapReward, 0);
+  assert.deepEqual(defaultState.dailyQuests, []);
+  assert.deepEqual(defaultState.questProgress, {});
+  assert.deepEqual(defaultState.dailyActionKinds, []);
+  assert.equal(defaultState.weeklyProgress, 0);
+  assert.equal(defaultState.weeklyClaimed, false);
   assert.deepEqual(defaultState.aiRooms, {});
 });
 
@@ -82,15 +104,112 @@ test("mess is scheduled by absolute time and does not duplicate every minute", (
   assert.equal(second.poop, 1);
 });
 
-test("consecutive daily return resets quests, increments streak, and grants daily coins", () => {
+test("consecutive daily return rolls fresh quests, increments streak, and grants daily coins", () => {
   const yesterday = new Date(2026, 7, 23, 20).getTime();
   const today = new Date(2026, 7, 24, 8).getTime();
-  const result = applyElapsed(stateAt(yesterday, { streak: 3, bestStreak: 3, questCare: 3, questGame: 1, questHappy: 1, claimed: ["care"], coins: 50 }), today);
+  const stale = stateAt(yesterday, {
+    streak: 3, bestStreak: 3, coins: 50,
+    dailyQuests: ["care8", "shopping"], questProgress: { care4: 3, shopping: 1 }, dailyActionKinds: ["feed", "play"], claimed: ["shopping"],
+  });
+  const result = applyElapsed(stale, today);
   assert.equal(result.streak, 4);
   assert.equal(result.bestStreak, 4);
   assert.equal(result.coins, 60);
-  assert.equal(result.questCare, 0);
+  assert.deepEqual(result.questProgress, {});
+  assert.deepEqual(result.dailyActionKinds, []);
   assert.deepEqual(result.claimed, []);
+  assert.equal(result.dailyQuests.length, 3);
+  assert.deepEqual(result.dailyQuests, rollDailyQuests(localDayKey(new Date(today)), 3));
+  const older = applyElapsed(stateAt(yesterday, { xp: 300, birthAt: yesterday - 3 * DAY }), today);
+  assert.equal(older.dailyQuests.length, 4);
+  assert.deepEqual(older.dailyQuests, rollDailyQuests(localDayKey(new Date(today)), 4));
+});
+
+test("daily quests are rolled deterministically, distinctly, and always include care", () => {
+  for (const key of ["2026-08-24", "2026-01-01", "2026-12-31", "2027-06-15"]) {
+    for (const slots of [3, 4, 5]) {
+      const rolled = rollDailyQuests(key, slots);
+      assert.equal(rolled.length, slots);
+      assert.equal(new Set(rolled).size, slots);
+      assert.ok(rolled.some((id) => id === "care4" || id === "care8"));
+      assert.deepEqual(rollDailyQuests(key, slots), rolled);
+      for (const id of rolled) assert.ok(questPool[id]);
+    }
+  }
+  assert.notDeepEqual(rollDailyQuests("2026-08-24", 4), rollDailyQuests("2026-08-25", 4));
+});
+
+test("a daily quest pays out once, and only when rolled and finished", () => {
+  const now = new Date(2026, 7, 24, 10).getTime();
+  const base = stateAt(now, { coins: 10, xp: 40, dailyQuests: ["care4", "shopping"], questProgress: { care4: 3 } });
+  assert.equal(claimDailyQuest(base, "care4"), base);
+  const ready = { ...base, questProgress: { ...base.questProgress, care4: 4 } };
+  const claimed = claimDailyQuest(ready, "care4");
+  assert.equal(claimed.coins, 10 + questPool.care4.reward);
+  assert.equal(claimed.xp, 48);
+  assert.deepEqual(claimed.claimed, ["care4"]);
+  assert.equal(claimDailyQuest(claimed, "care4"), claimed);
+  const notRolled = { ...ready, questProgress: { ...ready.questProgress, cleanTwice: 5 } };
+  assert.equal(claimDailyQuest(notRolled, "cleanTwice"), notRolled);
+});
+
+test("care actions feed the quest counters the UI reads", () => {
+  const now = new Date(2026, 7, 24, 21).getTime();
+  const base = stateAt(now, { fullness: 70, energy: 70, hygiene: 70, mood: 70 });
+  const one = performCareAction(base, "clean", now);
+  const two = performCareAction(one, "clean", now);
+  assert.equal(two.questProgress.care4, 2);
+  assert.equal(two.questProgress.care8, 2);
+  assert.equal(two.questProgress.cleanTwice, 2);
+  assert.equal(two.questProgress.fullSet, 1);
+  assert.equal(two.weeklyProgress, 2);
+  const bed = performCareAction(two, "sleep", now);
+  assert.equal(bed.questProgress.bedtime, 1);
+  const full = ["feed", "play"].reduce((game, action) => performCareAction(game, action, now), bed);
+  assert.equal(full.questProgress.fullSet, 4);
+  assert.equal(full.questProgress.happyPeak, 1);
+  assert.equal(full.questProgress.brightRoom, 1);
+  assert.equal(performCareAction(stateAt(now, { mood: 20, fullness: 10 }), "clean", now).questProgress.brightRoom, undefined);
+});
+
+test("the weekly quest rolls over on Monday and pays out once", () => {
+  const monday = new Date(2026, 7, 24, 9).getTime();
+  const nextMonday = new Date(2026, 7, 31, 9).getTime();
+  assert.equal(localWeekKey(new Date(2026, 7, 30, 23)), localWeekKey(new Date(monday)));
+  assert.notEqual(localWeekKey(new Date(nextMonday)), localWeekKey(new Date(monday)));
+  const busy = stateAt(monday, { weeklyProgress: 25, weeklyClaimed: true });
+  const sameWeek = applyElapsed(busy, monday + 6 * DAY);
+  assert.equal(sameWeek.weeklyProgress, 25);
+  assert.equal(sameWeek.weeklyClaimed, true);
+  const fresh = applyElapsed(busy, nextMonday);
+  assert.equal(fresh.weeklyProgress, 0);
+  assert.equal(fresh.weeklyClaimed, false);
+  assert.equal(fresh.weeklyKey, localWeekKey(new Date(nextMonday)));
+  const ready = stateAt(monday, { coins: 5, xp: 10, weeklyProgress: weeklyQuest.target });
+  const paid = claimWeekly(ready);
+  assert.equal(paid.coins, 5 + weeklyQuest.reward);
+  assert.equal(paid.xp, 110);
+  assert.equal(paid.weeklyClaimed, true);
+  assert.equal(claimWeekly(paid), paid);
+  const short = stateAt(monday, { weeklyProgress: weeklyQuest.target - 1 });
+  assert.equal(claimWeekly(short), short);
+});
+
+test("arcade runs are recorded in the engine with their ace thresholds", () => {
+  const now = new Date(2026, 7, 24, 10).getTime();
+  const base = stateAt(now, { arcadePlays: 1 });
+  const once = recordArcadeRun(base, "star", 24);
+  assert.equal(once.arcadePlays, 2);
+  assert.equal(once.questProgress.arcadeOne, 1);
+  assert.equal(once.questProgress.arcadeTwo, 1);
+  assert.equal(once.questProgress.starAce, undefined);
+  const twice = recordArcadeRun(once, "star", 25);
+  assert.equal(twice.arcadePlays, 3);
+  assert.equal(twice.questProgress.arcadeTwo, 2);
+  assert.equal(twice.questProgress.starAce, 1);
+  assert.equal(recordArcadeRun(base, "guess", 3).questProgress.guessAce, undefined);
+  assert.equal(recordArcadeRun(base, "guess", 4).questProgress.guessAce, 1);
+  assert.equal(recordPurchase(base).questProgress.shopping, 1);
 });
 
 test("return after a missed day resets current streak", () => {
@@ -110,6 +229,23 @@ test("evolution requires both XP and elapsed days", () => {
   assert.equal(currentStage({ ...highXpDayOne, birthAt: now - 6 * DAY }, now), "grown");
 });
 
+test("the late stages need both the long XP climb and the calendar", () => {
+  const now = new Date(2026, 7, 24, 10).getTime();
+  assert.equal(stageMeta.mentor.minXp, 2600);
+  assert.equal(stageMeta.mentor.minDay, 14);
+  assert.equal(stageMeta.legend.minXp, 6000);
+  assert.equal(stageMeta.legend.minDay, 30);
+  assert.equal(currentStage(stateAt(now, { xp: 6000, birthAt: now - 6 * DAY }), now), "grown");
+  assert.equal(currentStage(stateAt(now, { xp: 2599, birthAt: now - 13 * DAY }), now), "grown");
+  assert.equal(currentStage(stateAt(now, { xp: 2600, birthAt: now - 13 * DAY }), now), "mentor");
+  assert.equal(currentStage(stateAt(now, { xp: 6000, birthAt: now - 20 * DAY }), now), "mentor");
+  assert.equal(currentStage(stateAt(now, { xp: 6000, birthAt: now - 29 * DAY }), now), "legend");
+  for (const id of ["baby", "kid", "teen", "grown", "mentor", "legend"]) {
+    assert.ok(stageMeta[id].title.length > 2);
+    assert.ok(stageUnlocks[id].length > 8);
+  }
+});
+
 test("next-stage progress is gated by the slower of time and XP", () => {
   const now = Date.now();
   const dayOne = stateAt(now, { xp: 160 });
@@ -124,6 +260,21 @@ test("next-stage progress is gated by the slower of time and XP", () => {
   assert.equal(teenProgress.dayProgress, 33.33);
   assert.equal(teenProgress.xpProgress, 0);
   assert.equal(teenProgress.progress, 0);
+});
+
+test("progress keeps climbing past grown and only legend is capped", () => {
+  const now = Date.now();
+  const grown = nextStage(stateAt(now, { xp: 850, birthAt: now - 6 * DAY }), now);
+  assert.equal(grown.id, "mentor");
+  assert.equal(grown.target, 2600);
+  assert.equal(grown.progress, 0);
+  const mentor = nextStage(stateAt(now, { xp: 4300, birthAt: now - 20 * DAY }), now);
+  assert.equal(mentor.id, "legend");
+  assert.equal(mentor.target, 6000);
+  assert.equal(mentor.xpProgress, 50);
+  assert.ok(mentor.dayProgress > 0 && mentor.dayProgress < 100);
+  const legend = nextStage(stateAt(now, { xp: 7000, birthAt: now - 40 * DAY }), now);
+  assert.deepEqual(legend, { id: "legend", target: 6000, progress: 100, xpProgress: 100, dayProgress: 100 });
 });
 
 test("long absence is capped and remains recoverable", () => {
@@ -177,6 +328,56 @@ test("the discovery bonus is not farmable by repeating a filled need", () => {
   assert.equal(result.coins, 10);
 });
 
+test("a personality build is picked once, at 25 points, and changes the day", () => {
+  const now = new Date(2026, 7, 24, 12).getTime();
+  const shy = stateAt(now, { personality: { curious: 24, cozy: 0, comic: 0 } });
+  assert.equal(chooseBuild(shy, "curious"), shy);
+  const ready = stateAt(now, { xp: 100, personality: { curious: 25, cozy: 30, comic: 26 } });
+  const curious = chooseBuild(ready, "curious");
+  assert.equal(curious.personaBuild, "curious");
+  assert.equal(curious.xp, 120);
+  assert.equal(chooseBuild(curious, "cozy"), curious);
+  assert.equal(arcadeRewardBonus(ready), 1);
+  assert.equal(arcadeRewardBonus(curious), 1.1);
+  const cozyNap = performCareAction(chooseBuild(ready, "cozy"), "sleep", now);
+  assert.equal(cozyNap.sleepingUntil, now + 45 * 60_000);
+  assert.equal(performCareAction(ready, "sleep", now).sleepingUntil, now + 30 * 60_000);
+  const comic = chooseBuild({ ...ready, actions: 3, coins: 10, mood: 100 }, "comic");
+  const laugh = performCareAction(comic, "play", now);
+  assert.equal(laugh.actions, 4);
+  assert.equal(laugh.coins, 15);
+  assert.ok(performCareAction({ ...comic, mood: 40 }, "play", now).mood > performCareAction({ ...ready, mood: 40 }, "play", now).mood);
+  for (const id of ["curious", "cozy", "comic"]) assert.ok(personaBuildMeta[id].title.length > 2 && personaBuildMeta[id].note.length > 4);
+});
+
+test("a completed nap pays a bonus, and an interrupted one pays nothing", () => {
+  const now = new Date(2026, 7, 24, 12).getTime();
+  const napping = performCareAction(stateAt(now, { coins: 10, energy: 40 }), "sleep", now);
+  assert.equal(napping.napBonus, 15);
+  const rested = applyElapsed(napping, now + 40 * 60_000);
+  assert.equal(rested.coins, 25);
+  assert.equal(rested.pendingNapReward, 15);
+  assert.equal(rested.napBonus, 0);
+  assert.equal(applyElapsed(rested, now + 80 * 60_000).pendingNapReward, 15);
+  const night = new Date(2026, 7, 24, 22).getTime();
+  assert.equal(performCareAction(stateAt(night), "sleep", night).napBonus, 30);
+  const woken = performCareAction(napping, "feed", now + 60_000);
+  assert.equal(woken.napBonus, 0);
+  assert.equal(applyElapsed(woken, now + 40 * 60_000).coins, 10);
+  const cancelled = performCareAction(napping, "sleep", now + 60_000);
+  assert.equal(cancelled.napBonus, 0);
+  assert.equal(cancelled.sleeping, false);
+});
+
+test("cozy sleep loses less fullness and mood over a long nap", () => {
+  const now = new Date(2026, 7, 24, 12).getTime();
+  const base = { sleeping: true, sleepingUntil: now + 6 * HOUR };
+  const plain = applyElapsed(stateAt(now, base), now + 6 * HOUR);
+  const cozy = applyElapsed(stateAt(now, { ...base, personaBuild: "cozy" }), now + 6 * HOUR);
+  assert.ok(cozy.fullness > plain.fullness);
+  assert.ok(cozy.mood > plain.mood);
+});
+
 test("inventory use consumes exactly one item and applies its effect", () => {
   const now = Date.now();
   const base = stateAt(now, { fullness: 20, sick: true, inventory: { ...defaultState.inventory, apple: 1, medicine: 1 } });
@@ -196,8 +397,8 @@ test("a seven-day active playthrough reaches every evolution stage", () => {
     for (const action of ["feed", "sleep", "clean", "play", "feed", "clean", "play", "sleep"]) {
       game = performCareAction(game, action, sessionTime + game.actions * 1000);
     }
-    // One good arcade run plus the three daily quest claims.
-    game = { ...game, xp: game.xp + 110, coins: game.coins + 80, questCare: 3, questGame: 1, questHappy: 1 };
+    // One good arcade run plus the daily quest claims.
+    game = { ...game, xp: game.xp + 110, coins: game.coins + 80 };
     reached.add(currentStage(game, sessionTime));
   }
   assert.deepEqual([...reached], ["baby", "kid", "teen", "grown"]);
@@ -208,13 +409,29 @@ test("a seven-day active playthrough reaches every evolution stage", () => {
 test("buying a decoration costs coins once and rewards the room upgrade", () => {
   const now = new Date(2026, 7, 24, 10).getTime();
   const base = stateAt(now, { coins: 300, xp: 40 });
-  const bought = buyDecoration(base, "rug");
+  const bought = buyDecoration(base, "rug", now);
   assert.equal(bought.coins, 300 - decorMeta.rug.price);
   assert.equal(bought.decorations.rug, true);
   assert.equal(bought.xp, 55);
-  assert.equal(buyDecoration(bought, "rug"), bought);
-  assert.equal(buyDecoration(stateAt(now, { coins: 30 }), "trophy").coins, 30);
-  assert.equal(buyDecoration(stateAt(now, { coins: 30 }), "trophy").decorations.trophy, undefined);
+  assert.equal(bought.questProgress.shopping, 1);
+  assert.equal(buyDecoration(bought, "rug", now), bought);
+  assert.equal(buyDecoration(stateAt(now, { coins: 30 }), "trophy", now).coins, 30);
+  assert.equal(buyDecoration(stateAt(now, { coins: 30 }), "trophy", now).decorations.trophy, undefined);
+});
+
+test("the later shop shelves stay locked until the companion is old enough", () => {
+  const now = new Date(2026, 7, 24, 10).getTime();
+  const rich = stateAt(now, { coins: 5000 });
+  assert.equal(decorMeta.bookshelf.minDay, 8);
+  assert.equal(decorMeta.fireplace.minDay, 15);
+  assert.equal(buyDecoration(rich, "bookshelf", now), rich);
+  assert.equal(buyDecoration(rich, "fireplace", now), rich);
+  const week = { ...rich, birthAt: now - 7 * DAY };
+  const shelf = buyDecoration(week, "bookshelf", now);
+  assert.equal(shelf.decorations.bookshelf, true);
+  assert.equal(shelf.coins, 5000 - decorMeta.bookshelf.price);
+  assert.equal(buyDecoration(week, "projector", now), week);
+  assert.equal(buyDecoration({ ...rich, birthAt: now - 14 * DAY }, "projector", now).decorations.projector, true);
 });
 
 test("the daily coin grant grows with a furnished room", () => {
@@ -234,6 +451,19 @@ test("streak milestones pay out once and only when reached", () => {
   assert.equal(claimStreakMilestone(base, 14), base);
   assert.equal(claimStreakMilestone(claimed, 7), claimed);
   assert.equal(claimStreakMilestone(base, 9), base);
+});
+
+test("the long-haul milestones are reachable and pay their bigger rewards", () => {
+  const now = new Date(2026, 7, 24, 10).getTime();
+  const veteran = stateAt(now, { coins: 0, xp: 0, streak: 100, bestStreak: 100 });
+  const sixty = claimStreakMilestone(veteran, 60);
+  assert.equal(sixty.coins, 600);
+  assert.equal(sixty.xp, 600);
+  const hundred = claimStreakMilestone(sixty, 100);
+  assert.equal(hundred.coins, 1800);
+  assert.deepEqual(hundred.claimedMilestones, [60, 100]);
+  const rookie = stateAt(now, { streak: 30, bestStreak: 59 });
+  assert.equal(claimStreakMilestone(rookie, 60), rookie);
 });
 
 test("sickness deepens awake decay of energy and mood only", () => {

@@ -1,4 +1,4 @@
-import type { CharacterKind, DecorKey, ThemeId } from "./gameEngine";
+import type { CharacterKind, DecorKey, StageId, ThemeId } from "./gameEngine";
 
 export type CharacterVisual = "master" | ThemeId;
 
@@ -20,7 +20,16 @@ const themeDirection: Record<ThemeId, string> = {
   classic: "Match the classic LCD room: readable monochrome olive pixel-art rendering, crisp chunky silhouette, limited four-tone palette, no photographic texture.",
 };
 
-export function buildCharacterPrompt(kind: CharacterKind, name: string, visual: CharacterVisual) {
+export const stageFlair: Record<StageId, string> = {
+  baby: "Stage presentation only, never changing age, species, or identity: give them wide-eyed, brand-new-to-the-world energy.",
+  kid: "Stage presentation only, never changing age, species, or identity: give them bright, playful, curious energy.",
+  teen: "Stage presentation only, never changing age, species, or identity: give them confident, blooming energy with a light touch of personal flair.",
+  grown: "Stage presentation only, never changing age, species, or identity: give them a calm, proud, seasoned-friend presence.",
+  mentor: "Stage presentation only, never changing age, species, or identity: give them a warm, wise presence with one tiny cozy scarf as the only added accessory.",
+  legend: "Stage presentation only, never changing age, species, or identity: give them a subtle golden champion aura with a few soft sparkles, tasteful and gentle.",
+};
+
+export function buildCharacterPrompt(kind: CharacterKind, name: string, visual: CharacterVisual, stage?: StageId) {
   const safeKind = kind || "person";
   const identity = subjectIdentity[safeKind];
   const common = [
@@ -35,6 +44,9 @@ export function buildCharacterPrompt(kind: CharacterKind, name: string, visual: 
   } else {
     common.splice(3, 0, `${themeDirection[visual]} The first reference is the canonical character and must not be redesigned. If a second reference is present, use it only for lighting, palette, and rendering style; do not copy its room or objects.`);
   }
+  if (stage) {
+    common.splice(common.length - 1, 0, stageFlair[stage]);
+  }
   return common.join(" ");
 }
 
@@ -44,10 +56,11 @@ export function buildOpenRouterCharacterRequest(input: {
   kind: CharacterKind;
   name: string;
   visual: CharacterVisual;
+  stage?: StageId;
 }) {
   return {
     model: input.model,
-    prompt: buildCharacterPrompt(input.kind, input.name, input.visual),
+    prompt: buildCharacterPrompt(input.kind, input.name, input.visual, input.stage),
     input_references: input.references.map((url) => ({ type: "image_url", image_url: { url } })),
     n: 1,
     aspect_ratio: "1:1",
@@ -68,6 +81,12 @@ export const decorPrompt: Record<DecorKey, string> = {
   plant: "a happy small potted plant with rounded leaves",
   radio: "a little retro radio sitting on a surface",
   trophy: "a shiny golden trophy proudly on display",
+  bookshelf: "a small cozy bookshelf with colorful books, one leaning slightly",
+  aquarium: "a tiny round fish tank with clear water, one small orange fish and a little green plant",
+  telescope: "a friendly little telescope on a wooden tripod, pointed up toward the window",
+  fireplace: "a small warm fireplace with a gentle glowing fire, safely enclosed",
+  projector: "a tiny galaxy projector casting soft star patterns onto the ceiling",
+  icecream: "a playful mini ice-cream machine with a soft pastel swirl cone",
 };
 
 export const decorSetKey = (decorations: Partial<Record<DecorKey, boolean>>) => (Object.keys(decorPrompt) as DecorKey[]).filter((key) => decorations[key]).join(",");

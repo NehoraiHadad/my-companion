@@ -20,14 +20,15 @@ import {
 import { loadClip, loadMedia, removeClips, removeMedia, saveClip, saveMedia } from "./mediaStore";
 import { Carousel, KeyboardInput, MobileScroll, useKeyboard } from "./mobile";
 import {
-  HOUR, absenceMessage, ageDay, applyElapsed, arcadePayoutScale, buyDecoration, claimStreakMilestone, clamp, currentStage, decorMeta, defaultState, localDayKey,
-  nextStage, performCareAction, stageMeta, streakMilestones, useInventoryItem, whole,
-  type ActionKey, type CharacterKind, type CompanionMotion, type DecorKey, type GameState, type ItemKey, type NeedKey, type PersonalityId, type StageId, type ThemeId,
+  HOUR, absenceMessage, ageDay, applyElapsed, arcadePayoutScale, arcadeRewardBonus, buyDecoration, chooseBuild, claimDailyQuest, claimStreakMilestone, claimWeekly, clamp, currentStage,
+  decorMeta, defaultState, localDayKey, localWeekKey, nextStage, performCareAction, personaBuildMeta, questPool, recordArcadeRun, recordPurchase, stageMeta, stageUnlocks,
+  streakMilestones, useInventoryItem, weeklyQuest, whole,
+  type ActionKey, type CharacterKind, type CompanionMotion, type DecorKey, type GameState, type ItemKey, type NeedKey, type PersonalityId, type QuestId, type StageId, type ThemeId,
 } from "./gameEngine";
 import "./prototype.css";
 
 type ScreenId = "home" | "arcade" | "journey" | "bag";
-type OverlayId = "settings" | "ai" | "guide" | "event";
+type OverlayId = "settings" | "ai" | "guide" | "event" | "build";
 type EffectKind = "food" | "heart" | "bubble" | "moon" | "coin" | "medicine";
 type EventVariant = "event" | "notice";
 type AiScope = "text" | "voice" | "image" | "video" | "character" | "room" | "motion" | "dream" | "general";
@@ -133,7 +134,23 @@ const decorLines: Record<DecorKey, string> = {
   plant: "עציץ חדש. הבטחתי לו שלא ננהל שיחות ארוכות מדי.",
   radio: "רדיו! מהיום לכל צעד בחדר יש פסקול.",
   trophy: "גביע. לא זכיתי בכלום, אבל הוא נראה משכנע.",
+  bookshelf: "ספרייה. עכשיו יש איפה להחזיק דעות מסודרות.",
+  aquarium: "אקווריום. הדגים כבר ביקשו שקט בשעות הצהריים.",
+  telescope: "טלסקופ. בדקתי — היקום נראה בסדר גמור מכאן.",
+  fireplace: "החדר עכשיו חמים גם רגשית.",
+  projector: "מקרן. הקיר עבר בהצלחה אודישן למסך.",
+  icecream: "עמדת גלידה בבית. זו כבר לא סתם החלטה, זו מדיניות.",
 };
+
+const decorShelves: Array<{ minDay: number; title: string; note: string }> = [
+  { minDay: 1, title: "המדף הראשון", note: "פתוח מהיום הראשון" },
+  { minDay: 8, title: "המדף השני", note: "נפתח ביום 8" },
+  { minDay: 15, title: "המדף השלישי", note: "נפתח ביום 15" },
+];
+const shelfIndex = (minDay: number) => (minDay >= 15 ? 2 : minDay >= 8 ? 1 : 0);
+const daysLeftLabel = (days: number) => (days === 1 ? "עוד יום אחד" : `עוד ${days} ימים`);
+const stageOrder: StageId[] = ["baby", "kid", "teen", "grown", "mentor", "legend"];
+const wagerCost = 15;
 
 const sharedReactions: Record<ActionKey, string[]> = {
   feed: ["זו לא הייתה רעב. זו הייתה מסיבת עיתונאים של הבטן.", "השארתי פירור אחד. הוא אחראי על המשמרת הבאה."],
@@ -201,19 +218,13 @@ const guessTells = [
   { id: "blink", label: "מצמוץ", reliability: .4, phrase: "חשוד ביותר" },
 ];
 
-const questDefinitions = [
-  { id: "care", title: "שלוש פעולות טיפול", target: 3, reward: 25 },
-  { id: "game", title: "משחק אחד במשחקייה", target: 1, reward: 35 },
-  { id: "happy", title: "להגיע ל־85 שמחה", target: 1, reward: 20 },
-] as const;
-
 function loadState(): GameState {
   try {
     const fresh = new URLSearchParams(location.search).get("fresh") === "1";
     if (!fresh) {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as GameState | null;
       if (saved?.version === 5) {
-        return applyElapsed({ ...defaultState, ...saved, memories: saved.memories ?? [], animationSlots: saved.animationSlots ?? {}, aiCharacter: saved.aiCharacter ?? false, characterVariants: saved.characterVariants ?? {}, aiRooms: saved.aiRooms ?? {}, decorations: saved.decorations ?? {}, claimedMilestones: saved.claimedMilestones ?? [], arcadePlays: saved.arcadePlays ?? 0, sourcePhoto: saved.sourcePhoto ?? saved.photo });
+        return applyElapsed({ ...defaultState, ...saved, memories: saved.memories ?? [], animationSlots: saved.animationSlots ?? {}, aiCharacter: saved.aiCharacter ?? false, characterVariants: saved.characterVariants ?? {}, aiRooms: saved.aiRooms ?? {}, decorations: saved.decorations ?? {}, claimedMilestones: saved.claimedMilestones ?? [], arcadePlays: saved.arcadePlays ?? 0, dailyQuests: saved.dailyQuests ?? [], questProgress: saved.questProgress ?? {}, dailyActionKinds: saved.dailyActionKinds ?? [], weeklyKey: saved.weeklyKey ?? localWeekKey(), weeklyProgress: saved.weeklyProgress ?? 0, weeklyClaimed: saved.weeklyClaimed ?? false, personaBuild: saved.personaBuild ?? "", napBonus: saved.napBonus ?? 0, pendingNapReward: saved.pendingNapReward ?? 0, sourcePhoto: saved.sourcePhoto ?? saved.photo });
       }
       const v4 = JSON.parse(localStorage.getItem(V4_STORAGE_KEY) ?? "null") as Partial<GameState> | null;
       const v3 = JSON.parse(localStorage.getItem(V3_STORAGE_KEY) ?? "null") as Partial<GameState> | null;
@@ -355,7 +366,8 @@ export default function Prototype() {
   const [chatInput, setChatInput] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [starGame, setStarGame] = useState({ active: false, time: 20, score: 0, lane: 1, target: 1, targetId: 0, spawnAt: 0 });
-  const [guessGame, setGuessGame] = useState({ active: false, round: 0, score: 0, answer: null as "left" | "right" | null, reveal: "", secret: "left" as "left" | "right", hint: "left" as "left" | "right", tellLabel: guessTells[0].label, tellPhrase: guessTells[0].phrase });
+  const [guessGame, setGuessGame] = useState({ active: false, round: 0, score: 0, wager: false, answer: null as "left" | "right" | null, reveal: "", secret: "left" as "left" | "right", hint: "left" as "left" | "right", tellLabel: guessTells[0].label, tellPhrase: guessTells[0].phrase });
+  const [wagerArmed, setWagerArmed] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const motionTimerRef = useRef<number | null>(null);
   const starFinishedRef = useRef(false);
@@ -369,6 +381,8 @@ export default function Prototype() {
   const historyDepthRef = useRef(0);
   const historySyncRef = useRef(false);
   const aiAutoTestedRef = useRef(false);
+  const stagePreviousRef = useRef<StageId | null>(null);
+  const buildAskedRef = useRef(false);
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
@@ -432,7 +446,7 @@ export default function Prototype() {
     if (screen === "arcade") return;
     starFinishedRef.current = true;
     setStarGame((current) => current.active || current.time !== 20 ? { active: false, time: 20, score: 0, lane: 1, target: 1, targetId: 0, spawnAt: 0 } : current);
-    setGuessGame((current) => current.active || current.round ? { ...current, active: false, round: 0, score: 0, answer: null, reveal: "" } : current);
+    setGuessGame((current) => current.active || current.round ? { ...current, active: false, round: 0, score: 0, wager: false, answer: null, reveal: "" } : current);
   }, [screen]);
   useEffect(() => {
     const update = () => setGame((current) => applyElapsed(current));
@@ -569,10 +583,36 @@ export default function Prototype() {
   const roomBakeStatus = !decorSet ? "אין עדיין קישוטים" : bakedRoomSet === undefined ? "טרם נוצר" : bakedRoomSet === decorSet ? "מעודכן" : "יש קישוטים חדשים לשילוב";
   const hour = new Date().getHours();
   const isNight = hour < 7 || hour >= 20;
-  const pendingClaims = questDefinitions.filter((quest) => {
-    const progress = quest.id === "care" ? game.questCare : quest.id === "game" ? game.questGame : game.questHappy;
-    return progress >= quest.target && !game.claimed.includes(quest.id);
-  }).length + streakMilestones.filter((milestone) => game.bestStreak >= milestone.days && !game.claimedMilestones.includes(milestone.days)).length;
+  const dailyQuestIds = game.dailyQuests.filter((id): id is QuestId => Boolean(questPool[id as QuestId]));
+  const claimableDaily = dailyQuestIds.filter((id) => (game.questProgress[id] ?? 0) >= questPool[id].target && !game.claimed.includes(id)).length;
+  const weeklyReady = game.weeklyProgress >= weeklyQuest.target && !game.weeklyClaimed;
+  const pendingClaims = claimableDaily + (weeklyReady ? 1 : 0)
+    + streakMilestones.filter((milestone) => game.bestStreak >= milestone.days && !game.claimedMilestones.includes(milestone.days)).length;
+  const wagerUnlocked = stageOrder.indexOf(stage) >= stageOrder.indexOf("teen");
+  const buildReady = !game.personaBuild && (Object.keys(personaBuildMeta) as PersonalityId[]).some((id) => game.personality[id] >= 25);
+
+  useEffect(() => {
+    if (stagePreviousRef.current === null) { stagePreviousRef.current = stage; return; }
+    const previous = stagePreviousRef.current;
+    if (previous === stage) return;
+    stagePreviousRef.current = stage;
+    if (stageOrder.indexOf(stage) <= stageOrder.indexOf(previous)) return;
+    const refresh = game.aiCharacter && mediaStatus === "ready" ? " בסטודיו אפשר לרענן את הדמות כדי שתישא את האנרגיה החדשה." : "";
+    showEvent(`${stageMeta[stage].title}! ${stageUnlocks[stage]}.${refresh}`);
+    showEffect("heart");
+  }, [stage, game.aiCharacter, mediaStatus]);
+  useEffect(() => {
+    if (!game.onboarded || !buildReady || buildAskedRef.current) return;
+    if (pendingEvent || overlays.length) return;
+    buildAskedRef.current = true;
+    pushOverlay("build");
+  }, [game.onboarded, buildReady, pendingEvent, overlays.length]);
+  useEffect(() => {
+    if (game.pendingNapReward <= 0) return;
+    pushToast(`+${game.pendingNapReward} מטבעות על תנומה מושלמת!`);
+    showEffect("coin");
+    setGame((current) => ({ ...current, pendingNapReward: 0 }));
+  }, [game.pendingNapReward]);
 
   const applyOverlays = (next: OverlayId[]) => { overlaysRef.current = next; setOverlays(next); };
   const pushOverlay = (id: OverlayId) => applyOverlays([...overlaysRef.current, id]);
@@ -638,8 +678,10 @@ export default function Prototype() {
   };
 
   const performAction = (action: ActionKey) => {
+    const napArmed = game.sleeping && game.napBonus > 0 && game.sleepingUntil > Date.now();
     const next = performCareAction(game, action);
     setGame(next);
+    if (napArmed && (!next.sleeping || next.napBonus <= 0)) pushToast("התנומה נקטעה — הבונוס התפוגג");
     const foundCoins = next.coins - game.coins >= 12;
     if (foundCoins) window.setTimeout(() => { showEvent(`נמצאו 12 מטבעות מתחת לשטיח של ${game.name}. לא שואלים שאלות.`); showEffect("coin"); }, 400);
     const kind = game.characterKind || "person";
@@ -668,16 +710,19 @@ export default function Prototype() {
 
   const buyItem = (key: ItemKey) => {
     if (game.coins < items[key].price) { say("חסרים לנו מטבעות. המשחקייה קוראת לנו."); return; }
-    setGame((current) => current.coins < items[key].price ? current : ({ ...current, coins: current.coins - items[key].price, inventory: { ...current.inventory, [key]: current.inventory[key] + 1 } }));
+    setGame((current) => current.coins < items[key].price ? current : recordPurchase({ ...current, coins: current.coins - items[key].price, inventory: { ...current.inventory, [key]: current.inventory[key] + 1 } }));
     showEffect("coin"); pushToast(`${items[key].title} נכנס לתיק`);
   };
 
   const buyDecor = (key: DecorKey) => {
-    if (buyDecoration(game, key).coins === game.coins) {
-      say(game.decorations[key] ? "כבר יש לנו את זה בבית. בדקתי פעמיים." : "חסרים לנו מטבעות. המשחקייה קוראת לנו.");
+    const now = Date.now();
+    if (buyDecoration(game, key, now).coins === game.coins) {
+      say(game.decorations[key] ? "כבר יש לנו את זה בבית. בדקתי פעמיים."
+        : ageDay(game, now) < decorMeta[key].minDay ? "המדף הזה עדיין סגור. הזמן עובד בשבילנו, רק לאט."
+        : "חסרים לנו מטבעות. המשחקייה קוראת לנו.");
       return;
     }
-    setGame((current) => buyDecoration(current, key));
+    setGame((current) => buyDecoration(current, key, Date.now()));
     showEffect("coin"); setReaction(decorLines[key]); setReactionId((id) => id + 1); pushToast("נקנה! מחכה בחדר");
   };
 
@@ -688,22 +733,37 @@ export default function Prototype() {
     showEffect("coin"); say(`${days} ימים ברצף ו־${reward} מטבעות. מתחילים לחשוד שזו אהבה.`);
   };
 
-  const claimQuest = (id: string, reward: number, complete: boolean) => {
-    if (!complete || game.claimed.includes(id)) return;
-    setGame((current) => current.claimed.includes(id) ? current : ({ ...current, coins: current.coins + reward, xp: current.xp + reward, claimed: [...current.claimed, id] }));
+  const claimQuest = (id: QuestId) => {
+    const reward = claimDailyQuest(game, id).coins - game.coins;
+    if (reward <= 0) return;
+    setGame((current) => claimDailyQuest(current, id));
     showEffect("coin"); say(`משימה הושלמה! קיבלנו ${reward} מטבעות.`);
+  };
+
+  const claimWeeklyQuest = () => {
+    const reward = claimWeekly(game).coins - game.coins;
+    if (reward <= 0) return;
+    setGame((current) => claimWeekly(current));
+    showEffect("coin"); say(`שבוע שלם של התמדה ו־${reward} מטבעות. זה כבר הרגל, לא מקרה.`);
+  };
+
+  const chooseBuildOption = (id: PersonalityId) => {
+    const next = chooseBuild(game, id);
+    if (next.personaBuild !== id) { pushToast("האישיות הזאת עוד לא בשלה מספיק"); return; }
+    setGame((current) => chooseBuild(current, id));
+    popOverlay(); showEffect("heart"); pushToast(`${personaBuildMeta[id].title} — האופי נבחר וזה כבר מרגיש בחדר!`);
   };
 
   const startStarGame = () => { starTapRef.current = 0; setStarGame({ active: true, time: 20, score: 0, lane: 1, target: 1, targetId: Date.now(), spawnAt: Date.now() }); };
 
   const exitStarGame = () => { starFinishedRef.current = true; setStarGame({ active: false, time: 20, score: 0, lane: 1, target: 1, targetId: 0, spawnAt: 0 }); };
-  const exitGuessGame = () => setGuessGame((current) => ({ ...current, active: false, round: 0, score: 0, answer: null, reveal: "" }));
+  const exitGuessGame = () => setGuessGame((current) => ({ ...current, active: false, round: 0, score: 0, wager: false, answer: null, reveal: "" }));
 
   const finishStarGame = (score: number) => {
     const scale = arcadePayoutScale(game.arcadePlays);
-    const reward = Math.round(Math.min(75, Math.max(5, score * 3)) * scale);
+    const reward = Math.round(Math.min(75, Math.max(5, score * 3)) * scale * arcadeRewardBonus(game));
     const xpGain = Math.min(50, score * 2);
-    setGame((current) => { const mood = clamp(current.mood + 12); return { ...current, coins: current.coins + reward, xp: current.xp + xpGain, mood, arcadePlays: current.arcadePlays + 1, questGame: 1, questHappy: mood >= 85 ? 1 : current.questHappy, personality: { ...current.personality, curious: current.personality.curious + 2 } }; });
+    setGame((current) => { const mood = clamp(current.mood + 12); return recordArcadeRun({ ...current, coins: current.coins + reward, xp: current.xp + xpGain, mood, personality: { ...current.personality, curious: current.personality.curious + 2 } }, "star", score); });
     showEvent(`תפסנו ${score} כוכבים וקיבלנו ${reward} מטבעות.${scale < 1 ? " (מנוחה מהמשחקייה — פרס מוקטן)" : ""}`); showEffect("coin");
   };
 
@@ -724,7 +784,18 @@ export default function Prototype() {
     const tell = guessTells[Math.floor(Math.random() * guessTells.length)];
     return { secret, hint: Math.random() < tell.reliability ? secret : opposite, tellLabel: tell.label, tellPhrase: tell.phrase };
   };
-  const startGuess = () => setGuessGame({ active: true, round: 0, score: 0, answer: null, reveal: `לאן תהיה הקפיצה של ${game.name}?`, ...rollGuessRound() });
+  const toggleWager = () => {
+    if (!wagerUnlocked) return;
+    if (!wagerArmed && game.coins < wagerCost) { pushToast(`להימור צריך ${wagerCost} מטבעות. נשחק ונחזור.`); return; }
+    setWagerArmed((current) => !current);
+    pushToast(wagerArmed ? "מצב הימור כבוי" : "מצב הימור דלוק — הזכייה מוכפלת");
+  };
+  const startGuess = () => {
+    const betting = wagerArmed && wagerUnlocked;
+    if (betting && game.coins < wagerCost) { setWagerArmed(false); pushToast(`חסרים מטבעות להימור — צריך ${wagerCost}`); return; }
+    if (betting) { setGame((current) => current.coins < wagerCost ? current : ({ ...current, coins: current.coins - wagerCost })); showEffect("coin"); }
+    setGuessGame({ active: true, round: 0, score: 0, wager: betting, answer: null, reveal: `לאן תהיה הקפיצה של ${game.name}?`, ...rollGuessRound() });
+  };
   const makeGuess = (choice: "left" | "right") => {
     if (!guessGame.active || guessGame.answer) return;
     const answer = guessGame.secret;
@@ -736,9 +807,9 @@ export default function Prototype() {
       if (screenRef.current !== "arcade") return;
       if (nextRound >= 5) {
         const scale = arcadePayoutScale(game.arcadePlays);
-        const reward = Math.round(Math.min(60, nextScore * 6) * scale);
-        setGame((current) => { const mood = clamp(current.mood + 10); return { ...current, coins: current.coins + reward, xp: current.xp + nextScore * 5, arcadePlays: current.arcadePlays + 1, questGame: 1, mood, questHappy: mood >= 85 ? 1 : current.questHappy, personality: { ...current.personality, comic: current.personality.comic + 2 } }; });
-        showEvent(`${nextScore} מתוך 5! הרווחנו ${reward} מטבעות.${scale < 1 ? " (מנוחה מהמשחקייה — פרס מוקטן)" : ""}`);
+        const reward = Math.round(Math.min(60, nextScore * 6) * (guessGame.wager ? 2 : 1) * scale * arcadeRewardBonus(game));
+        setGame((current) => { const mood = clamp(current.mood + 10); return recordArcadeRun({ ...current, coins: current.coins + reward, xp: current.xp + nextScore * 5, mood, personality: { ...current.personality, comic: current.personality.comic + 2 } }, "guess", nextScore); });
+        showEvent(`${nextScore} מתוך 5! הרווחנו ${reward} מטבעות.${guessGame.wager ? " ההימור הוכפל כמו שהובטח." : ""}${scale < 1 ? " (מנוחה מהמשחקייה — פרס מוקטן)" : ""}`);
       } else setGuessGame((current) => ({ ...current, answer: null, reveal: "הסיבוב הבא…", ...rollGuessRound() }));
     }, 700);
   };
@@ -1104,8 +1175,8 @@ export default function Prototype() {
 
   const requestCharacterImage = (references: string[], visual: CharacterVisual) => requestStyledImage(
     references,
-    buildCharacterPrompt(game.characterKind, game.name, visual),
-    { openRouterBody: buildOpenRouterCharacterRequest({ model: ai.imageModel, references, kind: game.characterKind, name: game.name, visual }) },
+    buildCharacterPrompt(game.characterKind, game.name, visual, stage),
+    { openRouterBody: buildOpenRouterCharacterRequest({ model: ai.imageModel, references, kind: game.characterKind, name: game.name, visual, stage }) },
   );
 
   const stylizePhoto = async (fullSet = false) => {
@@ -1298,9 +1369,9 @@ export default function Prototype() {
     <div className={`companion-app theme-${game.theme}`} dir="rtl">
       <MobileScroll key={screen} className="app-screen"><main className="game-page" inert={overlayOpen} aria-hidden={overlayOpen || undefined}>
         {screen === "home" ? <HomeScreen game={game} characterUrl={currentCharacterUrl} health={health} stage={stage} evolution={evolution} day={day} needs={needs} lowestNeed={lowestNeed[0]} callNeed={callNeed} currentRoom={currentRoom} roomUrl={currentRoomUrl} bakedDecor={bakedDecor} reaction={reaction} reactionId={reactionId} wanderX={wanderX} effect={effect} isNight={isNight} aiReady={voiceStatus === "ready"} aiStatus={aiStatus} isSpeaking={isSpeaking} activeMotion={activeMotion} clipUrl={clipUrls[activeMotion] || clipUrls.idle} persistFailed={persistFailed} reduceMotion={Boolean(reduceMotion)} onSettings={() => pushOverlay("settings")} onAi={() => pushOverlay("ai")} onSpeak={() => void speak()} onAction={performAction} onPet={() => say(affectionLines[Math.floor(Math.random() * affectionLines.length)])} onPickPhoto={() => fileRef.current?.click()} onUseMedicine={() => useItem("medicine")} /> : null}
-        {screen === "arcade" ? <ArcadeScreen coins={game.coins} starGame={starGame} guessGame={guessGame} onStartStars={startStarGame} onCatch={catchLane} onStartGuess={startGuess} onGuess={makeGuess} onExitStars={exitStarGame} onExitGuess={exitGuessGame} /> : null}
-        {screen === "journey" ? <JourneyScreen game={game} stage={stage} evolution={evolution} day={day} personality={personality} careGrade={careGrade} onClaim={claimQuest} onClaimMilestone={claimMilestone} /> : null}
-        {screen === "bag" ? <BagScreen game={game} onUse={useItem} onBuy={buyItem} onBuyDecor={buyDecor} onArcade={() => setScreen("arcade")} /> : null}
+        {screen === "arcade" ? <ArcadeScreen coins={game.coins} starGame={starGame} guessGame={guessGame} wagerUnlocked={wagerUnlocked} wagerArmed={wagerArmed} onToggleWager={toggleWager} onStartStars={startStarGame} onCatch={catchLane} onStartGuess={startGuess} onGuess={makeGuess} onExitStars={exitStarGame} onExitGuess={exitGuessGame} /> : null}
+        {screen === "journey" ? <JourneyScreen game={game} stage={stage} evolution={evolution} day={day} personality={personality} careGrade={careGrade} dailyQuestIds={dailyQuestIds} buildReady={buildReady} onOpenBuild={() => pushOverlay("build")} onClaim={claimQuest} onClaimWeekly={claimWeeklyQuest} onClaimMilestone={claimMilestone} /> : null}
+        {screen === "bag" ? <BagScreen game={game} day={day} onUse={useItem} onBuy={buyItem} onBuyDecor={buyDecor} onArcade={() => setScreen("arcade")} /> : null}
       </main></MobileScroll>
 
       {game.onboarded ? <nav className="bottom-nav" aria-label="ניווט ראשי" inert={overlayOpen} aria-hidden={overlayOpen || undefined}>
@@ -1366,6 +1437,7 @@ export default function Prototype() {
           </div>
           {progressRow(isStyling)}
           <div className="small-note">מאסטר: בקשת תמונה אחת. ערכה מלאה: {game.aiCharacter ? "3" : "4"} בקשות בתשלום. התוצאות נשמרות רק במכשיר ומשמשות אוטומטית בחדר המתאים.</div>
+          <div className="small-note">הדמות נוצרת עם האנרגיה של השלב הנוכחי ({stageMeta[stage].title}) — אחרי אבולוציה אפשר לרענן.</div>
           <button className="wide-button" disabled={Boolean(characterBlock) || isStyling} onClick={() => void stylizePhoto(false)}><FaceIcon />{isStyling ? "יוצרים…" : game.aiCharacter ? "יצירת מאסטר מחדש" : "יצירת דמות מאסטר"}</button>
           <ConfirmAction className="wide-button accent" icon={<MagicWandIcon />} label={isStyling ? "מכינים ערכה…" : "התאמה לכל החדרים"} question={`${game.aiCharacter ? "3" : "4"} בקשות בתשלום. להמשיך?`} confirmLabel="ליצור" disabled={Boolean(characterBlock) || isStyling} onConfirm={() => void stylizePhoto(true)} />
           {characterBlock ? <div className="blocked-note">{characterBlock}</div> : null}
@@ -1385,6 +1457,7 @@ export default function Prototype() {
           {aiErrorFor("general")}
         </div></FullPage> : null}
         {overlay === "event" ? <EventCard text={eventText} variant={eventVariant} reduceMotion={Boolean(reduceMotion)} onClose={popOverlay} /> : null}
+        {overlay === "build" ? <BuildChoiceCard name={game.name} personality={game.personality} reduceMotion={Boolean(reduceMotion)} onChoose={chooseBuildOption} onLater={popOverlay} /> : null}
       </AnimatePresence>
 
       {!game.onboarded ? <Onboarding game={game} isImporting={isImporting} onKind={(characterKind: CharacterKind) => setGame((current) => ({ ...current, characterKind }))} onName={(name: string) => setGame((current) => ({ ...current, name }))} onTheme={(theme: ThemeId) => setGame((current) => ({ ...current, theme }))} onPhoto={() => fileRef.current?.click()} onDone={() => { setGame((current) => ({ ...current, onboarded: true, birthAt: current.xp ? current.birthAt : Date.now(), lastSeen: Date.now() })); say("החדר מוכן. החוקים פשוטים: מטפלים, משחקים ולא מאמינים לכל מה שנאמר כאן."); window.requestAnimationFrame(() => { const scroll = document.querySelector<HTMLElement>(".app-screen .mobile-scroll"); if (scroll) scroll.scrollTop = 0; }); }} /> : null}
@@ -1419,6 +1492,13 @@ function HomeScreen({ game, characterUrl, health, stage, evolution, day, needs, 
     const timer = window.setTimeout(() => setPetted(false), 460);
     return () => window.clearTimeout(timer);
   }, [petted]);
+  const [napTick, setNapTick] = useState(0);
+  useEffect(() => {
+    if (!game.sleeping) return;
+    const timer = window.setInterval(() => setNapTick((tick) => tick + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, [game.sleeping]);
+  const napMinutes = useMemo(() => Math.max(0, Math.ceil((game.sleepingUntil - Date.now()) / 60_000)), [game.sleepingUntil, game.sleeping, napTick]);
   const nextStageInfo = stageMeta[evolution.id as StageId];
   const labels: Record<Exclude<CharacterKind, "">, Record<ActionKey, string>> = {
     person: { feed: "ארוחה", sleep: "מנוחה", clean: "להתרענן", play: "כיף" },
@@ -1447,7 +1527,7 @@ function HomeScreen({ game, characterUrl, health, stage, evolution, day, needs, 
       <button className={`vital-summary ${callNeed ? "needs-care" : ""}`} aria-expanded={detailsOpen} aria-label={`${statusState} · טיפול ${whole(health)}% · לחצו למדדים`} onClick={() => setDetailsOpen((open) => !open)}><span><StatusIcon /></span><div><strong>{statusState}</strong><small>טיפול {whole(health)}% · {statusQuip}</small></div><ChevronLeftIcon aria-hidden /></button>
       <AnimatePresence>{detailsOpen ? <motion.div className="status-panel" initial={{ opacity: 0, y: -8, scale: .97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -7, scale: .98 }}>
         <div className="needs-strip" role="group" aria-label="מדדי הדמות">{(Object.entries(needs) as Array<[NeedKey, number]>).map(([key, value]) => { const MetaIcon = needsMeta[key].icon; return <div className={`need-chip ${key === lowestNeed ? "low" : ""}`} key={key} aria-label={`${needsMeta[key].label} ${whole(value)} מתוך 100`}><div><MetaIcon /><span>{needsMeta[key].label}</span></div><strong>{whole(value)}</strong><i role="progressbar" aria-valuenow={whole(value)} aria-valuemin={0} aria-valuemax={100}><b style={{ width: `${value}%` }} /></i></div>; })}</div>
-        <div className="time-progress"><span><ClockIcon />יום {day}</span><span><StarFilledIcon />רצף {game.streak}</span><div className="stage-progress"><span>{stage === "grown" ? "החברות ממשיכה לגדול" : `לקראת ${nextStageInfo.title} · יום ${nextStageInfo.minDay}`}</span><strong>{whole(evolution.progress)}%</strong><i role="progressbar" aria-valuenow={whole(evolution.progress)} aria-valuemin={0} aria-valuemax={100}><b style={{ width: `${evolution.progress}%` }} /></i></div></div>
+        <div className="time-progress"><span><ClockIcon />יום {day}</span><span><StarFilledIcon />רצף {game.streak}</span><div className="stage-progress"><span>{stage === "legend" ? "החברות ממשיכה לגדול" : `לקראת ${nextStageInfo.title} · יום ${nextStageInfo.minDay}`}</span><strong>{whole(evolution.progress)}%</strong><i role="progressbar" aria-valuenow={whole(evolution.progress)} aria-valuemin={0} aria-valuemax={100}><b style={{ width: `${evolution.progress}%` }} /></i></div></div>
       </motion.div> : null}</AnimatePresence>
     </div>
     <div className="room-scene">
@@ -1456,6 +1536,7 @@ function HomeScreen({ game, characterUrl, health, stage, evolution, day, needs, 
       <motion.button className={`moving-character photo-character motion-${activeMotion} ${clipUrl ? "video-character" : ""} ${game.aiCharacter ? "ai-character" : ""} ${game.sleeping ? "sleeping" : ""} ${game.sick ? "sick" : ""} ${petted ? "petted" : ""}`} aria-label={!characterUrl && !game.photo ? "בחירת תמונה לדמות" : `ללטף את ${game.name}`} onClick={() => { if (!characterUrl && !game.photo) { onPickPhoto(); return; } setSpeechOpen(true); onPet(); if (!reduceMotion) setPetted(true); }} animate={{ x: reduceMotion ? 0 : restX, ...staticMotion }} transition={{ x: { type: "spring", stiffness: 65, damping: 16 }, y: { repeat: reduceMotion || activeMotion !== "idle" ? 0 : Infinity, duration: activeMotion === "idle" ? 2.2 : .8 }, rotate: { repeat: reduceMotion || activeMotion !== "idle" ? 0 : Infinity, duration: activeMotion === "idle" ? 3.2 : .8 }, scale: { duration: .8 } }} whileTap={{ scale: .92 }}>{clipUrl ? <video key={`${activeMotion}-${clipUrl}`} src={clipUrl} autoPlay muted playsInline loop={activeMotion === "idle" || activeMotion === "sleep"} /> : characterUrl ? <img src={characterUrl} alt={game.name} draggable={false} /> : <span className="default-art" role="img" aria-label={game.name}><DefaultArt /></span>}</motion.button>
       {game.poop > 0 ? <div className="mess-row" role="img" aria-label={`${game.poop} לכלוכים`}>{Array.from({ length: game.poop }).map((_, index) => <motion.span key={index} initial={{ y: -20 }} animate={{ y: 0 }}><StinkIcon /></motion.span>)}</div> : null}
       {game.sleeping ? <div className="sleep-cloud"><MoonIcon /><span>ששש…</span></div> : null}
+      {game.sleeping ? <div className="nap-chip" role="status"><ClockIcon /><span>{napMinutes > 0 ? `תנומה מושלמת בעוד ${napMinutes} דק׳` : "התנומה הושלמה — עוד רגע מתעוררים"}</span>{game.napBonus > 0 ? <em>+{game.napBonus} בהתעוררות</em> : null}</div> : null}
       {(Object.keys(decorMeta) as DecorKey[]).filter((key) => game.decorations[key] && !bakedDecor.includes(key)).map((key, index) => { const Art = decorArt[key]; return <motion.div className={`room-decor decor-${key}`} key={key} aria-hidden initial={{ opacity: 0, scale: .5, y: -8 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ delay: index * .07, type: "spring", stiffness: 220, damping: 17 }}><Art /></motion.div>; })}
       <AnimatePresence>{effect && !reduceMotion ? <EffectBurst key={effect.id} kind={effect.kind} offset={restX} /> : null}</AnimatePresence>
     </div>
@@ -1469,28 +1550,44 @@ function EffectBurst({ kind, offset = 0 }: { kind: EffectKind; offset?: number }
   return <div className={`effect-burst effect-${kind}`} style={{ left: `calc(50% + ${offset}px)` }}>{Array.from({ length: 9 }).map((_, index) => { const angle = index * 40; const radius = 72 + (index % 3) * 15; return <motion.i key={index} initial={{ x: 0, y: 0, scale: .4, opacity: 1 }} animate={{ x: Math.cos(angle * Math.PI / 180) * radius, y: Math.sin(angle * Math.PI / 180) * radius, scale: 1.15, opacity: 0 }} transition={{ duration: 1.1, ease: "easeOut" }}><Icon /></motion.i>; })}</div>;
 }
 
-function ArcadeScreen({ coins, starGame, guessGame, onStartStars, onCatch, onStartGuess, onGuess, onExitStars, onExitGuess }: any) {
+function ArcadeScreen({ coins, starGame, guessGame, wagerUnlocked, wagerArmed, onToggleWager, onStartStars, onCatch, onStartGuess, onGuess, onExitStars, onExitGuess }: any) {
   return <section className="content-screen arcade-screen"><ScreenHeader eyebrow="מרוויחים מטבעות" title="המשחקייה" trailing={<div className="coin-pill"><TokensIcon /><strong>{coins}</strong></div>} />
     <div className="arcade-hero"><StarFilledIcon /><div><strong>משחקים קצרים, תגמול אמיתי</strong><span>המטבעות פותחים אוכל, צעצועים וטיפול.</span></div></div>
     <article className="game-card star-card"><div className="game-card-head"><span><StarFilledIcon /></span><div><h2>תופסי הכוכבים</h2><p>20 שניות · לחצו על המסלול הנכון</p></div>{!starGame.active ? <button onClick={onStartStars}>שחק</button> : null}</div>{starGame.active ? <div className="star-arena"><div className="scorebar"><strong>{starGame.score} כוכבים</strong><span>{starGame.time} שנ׳</span><button className="exit-run" onClick={onExitStars}>יציאה</button></div><div className="lanes">{[0,1,2].map((lane) => <button key={lane} aria-label={`מסלול ${lane + 1}`} onClick={() => onCatch(lane)}>{starGame.target === lane ? <motion.i key={starGame.targetId} initial={{ y: -110, rotate: 0 }} animate={{ y: 82, rotate: 180 }} transition={{ duration: .85, ease: "linear" }}><StarFilledIcon /></motion.i> : null}<span className={starGame.lane === lane ? "player active" : "player"}><FaceIcon /></span></button>)}</div></div> : <div className="game-preview stars-preview"><StarFilledIcon /><StarFilledIcon /><StarFilledIcon /></div>}</article>
-    <article className="game-card guess-card"><div className="game-card-head"><span><ChevronLeftIcon /></span><div><h2>לאן קופצים?</h2><p>בהשראת משחק הכיוון הקלאסי · 5 סיבובים</p></div>{!guessGame.active && guessGame.round === 0 ? <button onClick={onStartGuess}>שחק</button> : null}</div>{guessGame.active || guessGame.round > 0 ? <div className="guess-arena">{guessGame.active ? <div className="guess-tell-label"><FaceIcon />{guessGame.tellLabel} · {guessGame.tellPhrase}</div> : null}<strong>{guessGame.reveal || "לאן תהיה הקפיצה?"}</strong><motion.div className="guess-pet" animate={{ x: guessGame.answer === "left" ? -70 : guessGame.answer === "right" ? 70 : 0 }}><motion.span className="guess-tell" key={guessGame.round} animate={{ x: guessGame.answer ? 0 : [0, guessGame.hint === "left" ? -16 : 16, 0] }} transition={{ duration: .6, ease: "easeInOut" }}><FaceIcon /></motion.span></motion.div><div><button disabled={!guessGame.active || !!guessGame.answer} onClick={() => onGuess("right")}><ChevronRightIcon />ימינה</button><span>{guessGame.score}/{guessGame.round}</span><button disabled={!guessGame.active || !!guessGame.answer} onClick={() => onGuess("left")}>שמאלה<ChevronLeftIcon /></button></div><small className="guess-tip">{guessGame.active ? "הרמז מציץ לכיוון הקפיצה… בדרך כלל." : "טיפ: הדמות מציצה לכיוון שבא לה לקפוץ… בדרך כלל."}</small>{guessGame.active ? <button className="exit-run" onClick={onExitGuess}>יציאה</button> : null}{!guessGame.active && guessGame.round >= 5 ? <button className="again-button" onClick={onStartGuess}>עוד משחק</button> : null}</div> : <div className="game-preview direction-preview"><ChevronRightIcon /><FaceIcon /><ChevronLeftIcon /></div>}</article>
+    <article className="game-card guess-card"><div className="game-card-head"><span><ChevronLeftIcon /></span><div><h2>לאן קופצים?</h2><p>בהשראת משחק הכיוון הקלאסי · 5 סיבובים</p></div>{!guessGame.active && guessGame.round === 0 ? <button onClick={onStartGuess}>שחק</button> : null}</div>
+      {!guessGame.active ? <div className="wager-row">{wagerUnlocked
+        ? <><button className={`wager-toggle ${wagerArmed ? "on" : ""}`} role="switch" aria-checked={wagerArmed} aria-label="מצב הימור" onClick={onToggleWager}><i /><strong>מצב הימור</strong></button><small>כניסה: {wagerCost} מטבעות · הזכייה מוכפלת</small></>
+        : <div className="wager-locked"><LockClosedIcon /><strong>מצב הימור</strong><small>נפתח בשלב פורח</small></div>}</div> : null}
+      {guessGame.active || guessGame.round > 0 ? <div className="guess-arena">{guessGame.active && guessGame.wager ? <div className="wager-chip"><TokensIcon />הימור פעיל · זכייה כפולה</div> : null}{guessGame.active ? <div className="guess-tell-label"><FaceIcon />{guessGame.tellLabel} · {guessGame.tellPhrase}</div> : null}<strong>{guessGame.reveal || "לאן תהיה הקפיצה?"}</strong><motion.div className="guess-pet" animate={{ x: guessGame.answer === "left" ? -70 : guessGame.answer === "right" ? 70 : 0 }}><motion.span className="guess-tell" key={guessGame.round} animate={{ x: guessGame.answer ? 0 : [0, guessGame.hint === "left" ? -16 : 16, 0] }} transition={{ duration: .6, ease: "easeInOut" }}><FaceIcon /></motion.span></motion.div><div><button disabled={!guessGame.active || !!guessGame.answer} onClick={() => onGuess("right")}><ChevronRightIcon />ימינה</button><span>{guessGame.score}/{guessGame.round}</span><button disabled={!guessGame.active || !!guessGame.answer} onClick={() => onGuess("left")}>שמאלה<ChevronLeftIcon /></button></div><small className="guess-tip">{guessGame.active ? "הרמז מציץ לכיוון הקפיצה… בדרך כלל." : "טיפ: הדמות מציצה לכיוון שבא לה לקפוץ… בדרך כלל."}</small>{guessGame.active ? <button className="exit-run" onClick={onExitGuess}>יציאה</button> : null}{!guessGame.active && guessGame.round >= 5 ? <button className="again-button" onClick={onStartGuess}>עוד משחק</button> : null}</div> : <div className="game-preview direction-preview"><ChevronRightIcon /><FaceIcon /><ChevronLeftIcon /></div>}</article>
   </section>;
 }
 
-function JourneyScreen({ game, stage, evolution, day, personality, careGrade, onClaim, onClaimMilestone }: any) {
+function JourneyScreen({ game, stage, evolution, day, personality, careGrade, dailyQuestIds, buildReady, onOpenBuild, onClaim, onClaimWeekly, onClaimMilestone }: any) {
   const personalityNames: Record<PersonalityId,string> = { curious: "סקרן", cozy: "רגוע", comic: "מצחיקן" };
+  const weeklyDone = Math.min(weeklyQuest.target, game.weeklyProgress);
+  const weeklyPercent = Math.min(100, Math.round(weeklyDone / weeklyQuest.target * 100));
+  const weeklyClaimable = weeklyDone >= weeklyQuest.target && !game.weeklyClaimed;
   return <section className="content-screen"><ScreenHeader eyebrow="הטיפול שלך משנה הכול" title="מטרות והתקדמות" trailing={<div className="grade-pill">דירוג {careGrade}</div>} />
-    <article className="evolution-card"><div className="evolution-title"><div><small>יום {day} ביחד · רצף {game.streak}</small><h2>{stageMeta[stage as StageId].title}</h2></div><div className="personality-badge"><FaceIcon />{personalityNames[personality as PersonalityId]}</div></div><div className="evolution-track">{(Object.keys(stageMeta) as StageId[]).map((id,index) => <div className={`${id === stage ? "current" : game.xp >= stageMeta[id].minXp && day >= stageMeta[id].minDay ? "done" : ""}`} key={id}><span>{index + 1}</span><small>{stageMeta[id].title}</small><em>יום {stageMeta[id].minDay}</em></div>)}</div>{stage !== "grown" ? <div className="next-progress"><span>לקראת {stageMeta[evolution.id as StageId].title} · דורש יום {stageMeta[evolution.id as StageId].minDay}</span><strong>{game.xp}/{evolution.target} XP</strong><i role="progressbar" aria-valuenow={whole(evolution.progress)} aria-valuemin={0} aria-valuemax={100}><b style={{ width: `${evolution.progress}%` }} /></i><small>השלב נפתח רק כשגם הזמן וגם הניסיון מוכנים.</small></div> : <div className="grown-note"><StarFilledIcon />הגעתם לשלב הבוגר. האופי והזיכרונות ממשיכים להתפתח.</div>}</article>
+    <article className="evolution-card"><div className="evolution-title"><div><small>יום {day} ביחד · רצף {game.streak}</small><h2>{stageMeta[stage as StageId].title}</h2></div><div className="personality-badge"><FaceIcon />{personalityNames[personality as PersonalityId]}</div></div>
+      {game.personaBuild ? <div className="build-chip"><StarFilledIcon /><div><strong>{personaBuildMeta[game.personaBuild as PersonalityId].title}</strong><small>{personaBuildMeta[game.personaBuild as PersonalityId].note}</small></div></div>
+        : buildReady ? <button className="build-chip open" onClick={onOpenBuild}><MagicWandIcon /><div><strong>מתגבשת פה אישיות…</strong><small>אפשר לבחור את הכיוון עכשיו</small></div><ChevronLeftIcon /></button> : null}
+      <div className="evolution-track">{(Object.keys(stageMeta) as StageId[]).map((id,index) => <div className={`${id === stage ? "current" : game.xp >= stageMeta[id].minXp && day >= stageMeta[id].minDay ? "done" : ""}`} key={id}><span>{index + 1}</span><small>{stageMeta[id].title}</small><em>יום {stageMeta[id].minDay}</em></div>)}</div>{stage !== "legend" ? <div className="next-progress"><span>לקראת {stageMeta[evolution.id as StageId].title} · דורש יום {stageMeta[evolution.id as StageId].minDay}</span><strong>{game.xp}/{evolution.target} XP</strong><i role="progressbar" aria-valuenow={whole(evolution.progress)} aria-valuemin={0} aria-valuemax={100}><b style={{ width: `${evolution.progress}%` }} /></i><small>השלב נפתח רק כשגם הזמן וגם הניסיון מוכנים.</small></div> : <div className="grown-note"><StarFilledIcon />הגעתם לשלב האגדי. האופי והזיכרונות ממשיכים להתפתח.</div>}</article>
     <div className="section-heading"><div><small>מתמידים ומרוויחים</small><h2>אבני דרך של רצף</h2></div><StarFilledIcon /></div>
     <div className="milestone-strip">{streakMilestones.map((milestone) => { const claimed = game.claimedMilestones.includes(milestone.days); const ready = game.bestStreak >= milestone.days && !claimed; return <button key={milestone.days} className={`${ready ? "ready" : ""} ${claimed ? "claimed" : ""}`} disabled={!ready} onClick={() => onClaimMilestone(milestone.days)}><span>{claimed ? <CheckIcon /> : ready ? <StarFilledIcon /> : <LockClosedIcon />}</span><strong>רצף {milestone.days}</strong><em>+{milestone.reward}</em><small>{claimed ? "נאסף" : ready ? "לאיסוף" : `${Math.min(game.bestStreak, milestone.days)}/${milestone.days}`}</small></button>; })}</div>
     <div className="section-heading"><div><small>מתחדש בכל יום</small><h2>משימות יומיות</h2></div><ClockIcon /></div>
-    <div className="quest-list">{questDefinitions.map((quest) => { const progress = quest.id === "care" ? game.questCare : quest.id === "game" ? game.questGame : game.questHappy; const complete = progress >= quest.target; const claimed = game.claimed.includes(quest.id); const claimable = complete && !claimed; const percent = Math.min(100, Math.round(progress / quest.target * 100)); return <button key={quest.id} className={`${complete ? "complete" : ""} ${claimed ? "claimed" : ""}`} disabled={!claimable} aria-label={claimable ? `לאסוף ${quest.reward} מטבעות · ${quest.title}` : `${quest.title} · ${claimed ? "נאסף" : `${Math.min(progress, quest.target)} מתוך ${quest.target}`}`} onClick={() => onClaim(quest.id, quest.reward, complete)}><span>{claimed ? <CheckIcon /> : complete ? <StarFilledIcon /> : <ClockIcon />}</span><div><strong>{quest.title}</strong><small>{Math.min(progress, quest.target)}/{quest.target}</small><i role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}><b style={{ width: `${percent}%` }} /></i></div><em>{claimed ? "נאסף" : `+${quest.reward}`}</em></button>; })}</div>
+    <div className="quest-list">{(dailyQuestIds as QuestId[]).map((id) => { const quest = questPool[id]; const progress = Math.min(quest.target, game.questProgress[id] ?? 0); const complete = progress >= quest.target; const claimed = game.claimed.includes(id); const claimable = complete && !claimed; const percent = Math.min(100, Math.round(progress / quest.target * 100)); return <button key={id} className={`${complete ? "complete" : ""} ${claimed ? "claimed" : ""}`} disabled={!claimable} aria-label={claimable ? `לאסוף ${quest.reward} מטבעות · ${quest.title}` : `${quest.title} · ${claimed ? "נאסף" : `${progress} מתוך ${quest.target}`}`} onClick={() => onClaim(id)}><span>{claimed ? <CheckIcon /> : complete ? <StarFilledIcon /> : <ClockIcon />}</span><div><strong>{quest.title}</strong><small>{progress}/{quest.target}</small><i role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label={`התקדמות ${quest.title}`}><b style={{ width: `${percent}%` }} /></i></div><em>{claimed ? "נאסף" : `+${quest.reward}`}</em></button>; })}
+      {dailyQuestIds.length ? null : <div className="small-note">המשימות של היום מתגלגלות ברגע זה — עוד שנייה הן כאן.</div>}</div>
+    <article className={`weekly-quest ${weeklyClaimable ? "ready" : ""} ${game.weeklyClaimed ? "claimed" : ""}`}>
+      <div className="weekly-head"><span>{game.weeklyClaimed ? <CheckIcon /> : <StarFilledIcon />}</span><div><small>מטרת השבוע</small><strong>{weeklyQuest.title}</strong></div><em><TokensIcon />{weeklyQuest.reward}</em></div>
+      <i role="progressbar" aria-valuenow={weeklyPercent} aria-valuemin={0} aria-valuemax={100} aria-label={`התקדמות שבועית ${weeklyDone} מתוך ${weeklyQuest.target}`}><b style={{ width: `${weeklyPercent}%` }} /></i>
+      <div className="weekly-foot"><small>{weeklyDone}/{weeklyQuest.target}</small><button disabled={!weeklyClaimable} aria-label={weeklyClaimable ? `לאסוף ${weeklyQuest.reward} מטבעות על מטרת השבוע` : game.weeklyClaimed ? "פרס השבוע כבר נאסף" : `נשארו ${weeklyQuest.target - weeklyDone} פעולות למטרת השבוע`} onClick={onClaimWeekly}>{game.weeklyClaimed ? "נאסף השבוע" : weeklyClaimable ? "לאסוף" : "עוד בדרך"}</button></div>
+    </article>
     <div className="stats-grid"><div><strong>{game.actions}</strong><span>פעולות טיפול</span></div><div><strong>{game.bestStreak}</strong><span>שיא רצף</span></div><div><strong>{game.xp}</strong><span>נקודות ניסיון</span></div><div><strong>{game.careMistakes}</strong><span>רגעי מצוקה</span></div></div>
     {game.memories.length ? <><div className="section-heading memory-title"><div><small>נוצר עם AI</small><h2>הזיכרונות שלנו</h2></div><MagicWandIcon /></div><div className="memory-list">{game.memories.slice(-5).reverse().map((memory: string, index: number) => <div key={`${memory}-${index}`}><StarFilledIcon /><span>{memory}</span></div>)}</div></> : null}
   </section>;
 }
 
-function BagScreen({ game, onUse, onBuy, onBuyDecor, onArcade }: any) {
+function BagScreen({ game, day, onUse, onBuy, onBuyDecor, onArcade }: any) {
   const [tab, setTab] = useState<"items" | "room">("items");
   const empty = (Object.keys(items) as ItemKey[]).every((key) => game.inventory[key] < 1);
   const toShop = () => document.getElementById("bag-shop")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1507,8 +1604,16 @@ function BagScreen({ game, onUse, onBuy, onBuyDecor, onArcade }: any) {
       <div className="shop-list">{(Object.entries(items) as Array<[ItemKey,(typeof items)[ItemKey]]>).map(([key,item]) => { const Icon = item.icon; return <button key={key} disabled={game.coins < item.price} onClick={() => onBuy(key)}><span><Icon /></span><div><strong>{item.title}</strong><small>{item.note}</small></div><em><TokensIcon />{item.price}</em></button>; })}</div>
     </> : <>
       <div className="section-heading shop-title"><div><small>משדרגים את הבית</small><h2>לחדר</h2></div><HomeIcon /></div>
-      <div className="shop-list decor-list">{(Object.entries(decorMeta) as Array<[DecorKey,(typeof decorMeta)[DecorKey]]>).map(([key,decor]) => { const Art = decorIcons[key]; const owned = Boolean(game.decorations[key]); return <button key={key} className={owned ? "owned" : ""} disabled={owned || game.coins < decor.price} onClick={() => onBuyDecor(key)}><span><Art /></span><div><strong>{decor.title}</strong><small>{decor.note}</small></div>{owned ? <em className="owned-tag"><CheckIcon />בבית!</em> : <em><TokensIcon />{decor.price}</em>}</button>; })}</div>
-      <div className="small-note">הקישוטים מופיעים מיד בחדר, ובעמוד ה־AI אפשר לצבוע אותם ישר לתוך תמונת החדר.</div>
+      {decorShelves.map((shelf, index) => {
+        const rows = (Object.entries(decorMeta) as Array<[DecorKey,(typeof decorMeta)[DecorKey]]>).filter(([, decor]) => shelfIndex(decor.minDay) === index);
+        if (!rows.length) return null;
+        const shelfLocked = day < shelf.minDay;
+        return <section className={`decor-shelf ${shelfLocked ? "locked" : ""}`} key={shelf.title}>
+          <div className="shelf-head"><div><strong>{shelf.title}</strong><small>{shelf.note}</small></div>{shelfLocked ? <em><LockClosedIcon />{daysLeftLabel(shelf.minDay - day)}</em> : null}</div>
+          <div className="shop-list decor-list">{rows.map(([key,decor]) => { const Art = decorIcons[key]; const owned = Boolean(game.decorations[key]); const locked = day < decor.minDay; return <button key={key} className={`${owned ? "owned" : ""} ${locked ? "locked" : ""}`} disabled={owned || locked || game.coins < decor.price} aria-label={locked ? `${decor.title} · נפתח ביום ${decor.minDay}` : owned ? `${decor.title} · כבר בבית` : `${decor.title} · ${decor.price} מטבעות`} onClick={() => onBuyDecor(key)}><span><Art /></span><div><strong>{decor.title}</strong><small>{decor.note}</small></div>{owned ? <em className="owned-tag"><CheckIcon />בבית!</em> : locked ? <em className="locked-tag"><LockClosedIcon />{daysLeftLabel(decor.minDay - day)}</em> : <em><TokensIcon />{decor.price}</em>}</button>; })}</div>
+        </section>;
+      })}
+      <div className="small-note">הקישוטים מופיעים מיד בחדר, ובעמוד ה־AI אפשר לצבוע אותם ישר לתוך תמונת החדר. מדפים נוספים נפתחים עם הימים המשותפים.</div>
     </>}
   </section>;
 }
@@ -1545,6 +1650,24 @@ function EventCard({ text, variant, reduceMotion, onClose }: { text: string; var
     <motion.div className={`event-card ${notice ? "notice" : ""}`} role="dialog" aria-modal="true" aria-label={title} initial={reduceMotion ? { opacity: 0 } : { scale: .82, y: 30 }} animate={reduceMotion ? { opacity: 1 } : { scale: 1, y: 0 }} exit={reduceMotion ? { opacity: 0 } : { scale: .9, opacity: 0 }}>
       <div className="event-star">{notice ? <InfoCircledIcon /> : <StarFilledIcon />}</div><small>{title}</small><h2>{text}</h2>
       <button ref={continueRef} className="wide-button accent" onClick={onClose}>ממשיכים</button>
+    </motion.div>
+  </motion.div>;
+}
+
+function BuildChoiceCard({ name, personality, reduceMotion, onChoose, onLater }: { name: string; personality: Record<PersonalityId, number>; reduceMotion: boolean; onChoose: (id: PersonalityId) => void; onLater: () => void }) {
+  const firstRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    firstRef.current?.focus();
+    return () => { if (previous && document.contains(previous)) previous.focus(); };
+  }, []);
+  const options = (Object.keys(personaBuildMeta) as PersonalityId[]).sort((a, b) => personality[b] - personality[a]);
+  return <motion.div className="event-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+    <motion.div className="event-card build-card" role="dialog" aria-modal="true" aria-label="בחירת אופי" initial={reduceMotion ? { opacity: 0 } : { scale: .82, y: 30 }} animate={reduceMotion ? { opacity: 1 } : { scale: 1, y: 0 }} exit={reduceMotion ? { opacity: 0 } : { scale: .9, opacity: 0 }}>
+      <div className="event-star"><MagicWandIcon /></div><small>רגע של אופי</small><h2>מתגבשת פה אישיות…</h2>
+      <p className="build-lead">{name || "החבר שלנו"} כבר יודע לאן נמשך. בוחרים כיוון אחד — והוא נשאר.</p>
+      <div className="build-options">{options.map((id, index) => { const ready = personality[id] >= 25; return <button key={id} ref={index === 0 ? firstRef : undefined} className={ready ? "ready" : ""} disabled={!ready} aria-label={ready ? `לבחור ${personaBuildMeta[id].title} · ${personaBuildMeta[id].note}` : `${personaBuildMeta[id].title} · עוד ${25 - personality[id]} נקודות אופי`} onClick={() => onChoose(id)}><strong>{personaBuildMeta[id].title}</strong><small>{personaBuildMeta[id].note}</small>{ready ? <i><CheckIcon /></i> : <em><LockClosedIcon />{Math.max(0, 25 - personality[id])}</em>}</button>; })}</div>
+      <button className="ghost-button" onClick={onLater}>אולי בהמשך</button>
     </motion.div>
   </motion.div>;
 }
