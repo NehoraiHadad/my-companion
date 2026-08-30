@@ -6,6 +6,7 @@ import {
   type Ref,
   type TextareaHTMLAttributes,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -34,6 +35,22 @@ type KeyboardInputProps = InputHTMLAttributes<HTMLInputElement> & {
 
 const KeyboardContext = createContext<KeyboardContextValue | null>(null);
 
+function usesNativeKeyboard() {
+  return typeof document !== "undefined" && document.documentElement.classList.contains("native-apk");
+}
+
+function restoreViewportOrigin() {
+  window.scrollTo(0, 0);
+  if (document.scrollingElement) {
+    document.scrollingElement.scrollTop = 0;
+    document.scrollingElement.scrollLeft = 0;
+  }
+  for (const element of document.querySelectorAll<HTMLElement>(".device-screen, .phone-device, .mobile-app-viewport")) {
+    element.scrollTop = 0;
+    element.scrollLeft = 0;
+  }
+}
+
 export function KeyboardProvider({ children }: PropsWithChildren) {
   const { device } = useMobileDevice();
   const [visible, setVisible] = useState(false);
@@ -44,6 +61,28 @@ export function KeyboardProvider({ children }: PropsWithChildren) {
   const setDragOffset = (offset: number) => {
     setRawDragOffset(Math.max(0, Math.min(fullHeight, offset)));
   };
+
+  useEffect(() => {
+    if (!usesNativeKeyboard()) return;
+
+    const viewport = window.visualViewport;
+    let previousHeight = viewport?.height ?? window.innerHeight;
+    const restoreAfterResize = () => {
+      const nextHeight = viewport?.height ?? window.innerHeight;
+      if (nextHeight > previousHeight + 1) {
+        window.requestAnimationFrame(restoreViewportOrigin);
+        window.setTimeout(restoreViewportOrigin, 280);
+      }
+      previousHeight = nextHeight;
+    };
+
+    viewport?.addEventListener("resize", restoreAfterResize);
+    window.addEventListener("resize", restoreAfterResize);
+    return () => {
+      viewport?.removeEventListener("resize", restoreAfterResize);
+      window.removeEventListener("resize", restoreAfterResize);
+    };
+  }, []);
 
   const value = useMemo<KeyboardContextValue>(
     () => ({
@@ -60,13 +99,16 @@ export function KeyboardProvider({ children }: PropsWithChildren) {
         setRawDragOffset(0);
         setDragging(false);
         setFocusedElement(element ?? null);
-        setVisible(true);
+        setVisible(!usesNativeKeyboard());
       },
       hide: () => {
         focusedElement?.blur();
         setDragging(false);
         setFocusedElement(null);
         setVisible(false);
+        restoreViewportOrigin();
+        window.requestAnimationFrame(restoreViewportOrigin);
+        window.setTimeout(restoreViewportOrigin, 280);
       },
     }),
     [dragOffset, focusedElement, fullHeight, isDragging, visible],
@@ -190,6 +232,10 @@ export function KeyboardInput(props: KeyboardInputProps) {
         keyboard.show(event.currentTarget);
         inputProps.onFocus?.(event);
       }}
+      onBlur={(event) => {
+        keyboard.hide();
+        inputProps.onBlur?.(event);
+      }}
     />
   );
 }
@@ -203,6 +249,10 @@ export function KeyboardTextarea(props: TextareaHTMLAttributes<HTMLTextAreaEleme
       onFocus={(event) => {
         keyboard.show(event.currentTarget);
         props.onFocus?.(event);
+      }}
+      onBlur={(event) => {
+        keyboard.hide();
+        props.onBlur?.(event);
       }}
     />
   );

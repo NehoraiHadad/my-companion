@@ -2,7 +2,7 @@
 
 A local-first Android companion game inspired by the care loop of classic Tamagotchi toys, with a premium modern visual direction and a light humorous voice.
 
-## Included in v5.4.1
+## Included in v5.4.2
 
 - Four continuously time-based needs: fullness, energy, hygiene, and joy, including correct in-session decay and resume processing.
 - Feed, sleep, clean, and play actions with cross-effects and XP progression.
@@ -12,6 +12,8 @@ A local-first Android companion game inspired by the care loop of classic Tamago
 - Day and visit-streak progression, daily reset/bonus, return summaries, age-gated evolution, and bounded recovery after long absence.
 - A room-first home screen: the companion is the visual focus, detailed statistics expand only when requested, and character creation/AI controls live in settings instead of floating over play.
 - A continuous full-height game surface and a bottom navigation rail anchored to the screen edge, with clearer destinations: home, games, goals, and bag.
+- Long screens keep their final controls above the fixed navigation rail when scrolled to the bottom.
+- The Android APK relies only on the native keyboard and restores the WebView origin after dismissal, avoiding a persistent blank area.
 - The detailed status popover closes on a second tap, an outside tap, or automatically after 4.8 seconds.
 - A concise four-part loop — care, games, progress, and items — with a first-run guide that explains what every destination contributes.
 - Care score and needs now decline continuously with elapsed time. Short and long absences produce different, warm return scenes without death or guilt.

@@ -1,4 +1,4 @@
-# My Companion v5.4.1 — verification report
+# My Companion v5.4.2 — verification report
 
 Date: 2026-08-30
 
@@ -13,8 +13,8 @@ Date: 2026-08-30
 - Live mobile browser pass: passed for fresh onboarding, the home room, and the decoration shelves.
 - Android packaging, signing, and Nitron verification: passed.
 - APK ZIP integrity: passed with no compressed-data errors.
-- Output: `deliverables/My-Companion-v5.4.1.apk` (4,664,542 bytes).
-- SHA-256: `ca61b18b57360c438c3354c9d584617929f2de43bbfdc74daef0f7eea4a46767`.
+- Output: `deliverables/My-Companion-v5.4.2.apk` (4,664,542 bytes).
+- SHA-256: `a522f83b07c86d099bc0d3aad0bdfc001863e4041f451cb4d86a992f9bd83e1c`.
 
 ## Fixes covered
 
@@ -24,9 +24,12 @@ Date: 2026-08-30
 - Decoration shelves unlock by evolution stage, so their availability agrees with the XP-and-time progression rules shown elsewhere in the product.
 - Care actions award XP, quest progress, weekly progress, and personality changes only when they actually help the companion. Repeated taps at full needs and interrupting sleep can no longer farm rewards.
 - Reports and automatic AI events are triggered only by rewarded care actions.
-- Decoration artwork is loaded as a separate lazy chunk. The main production JavaScript chunk is 599,207 bytes and the decoration chunk is 37,147 bytes.
+- Decoration artwork is loaded as a separate lazy chunk. The main production JavaScript chunk is 600,062 bytes and the decoration chunk is 37,147 bytes.
 - Android packaging applies `native-apk` to the current Hebrew HTML document instead of matching only the obsolete English tag. The build now fails explicitly if native mode cannot be applied.
-- Product version, README, durable project decisions, and test documentation now agree on version 5.4.1.
+- Long game screens grow with their content and retain a full navigation-height trailing area, allowing the final item to scroll completely above the fixed bottom navigation.
+- Native APK inputs use the Android keyboard without also activating the simulated keyboard inset.
+- Keyboard dismissal and Android viewport restoration reset the WebView, device shell, and app viewport to their top-left origin, preventing a persistent blank region after keyboard use.
+- Product version, README, durable project decisions, and test documentation now agree on version 5.4.2.
 
 ## Browser evidence
 
@@ -36,6 +39,8 @@ Date: 2026-08-30
 - The first decoration shelf was open while later shelves displayed the expected evolution-stage locks.
 - No application-origin browser console errors were observed during this pass.
 - The packaged HTML was previewed in native mode: the device picker, bezel, and simulated camera were hidden while the game remained visible on the full surface.
+- Pixel 10 verification reached the maximum scroll position in both Bag and Goals; the final element in each screen remained fully above the navigation bar.
+- Keyboard verification returned `deviceScrollTop` to 0, left no height gap, and kept the simulated keyboard inactive in native APK mode.
 
 ## Provider architecture retained
 

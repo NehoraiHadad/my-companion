@@ -512,10 +512,12 @@ html.native-apk .device-screen,
 html.native-apk .mobile-app-viewport { background: #071123; }
 
 .companion-app { --game-nav-height: calc(68px + var(--mobile-safe-area-height,0px)); }
-.app-screen .mobile-scroll-content { height: 100%; min-height: 100%; background: var(--page-bg); }
-.game-page { height: 100%; min-height: 100%; padding-bottom: var(--game-nav-height); }
+.app-screen .mobile-scroll-content { min-height: 100%; background: var(--page-bg); }
+.game-page { min-height: 100%; padding-bottom: var(--game-nav-height); }
+.game-page.screen-home { height: 100%; }
 .home-screen { height: 100%; min-height: 0; padding-bottom: 8px; }
 .content-screen { min-height: 100%; }
+.app-screen .content-screen { padding-bottom: 24px; }
 
 .status-popover { position: relative; z-index: 44; flex: 0 0 50px; width: 100%; min-width: 0; }
 .status-popover .status-panel { top: calc(100% + 6px); right: 0; left: 0; }

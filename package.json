@@ -1,7 +1,7 @@
 {
   "name": "pocket-companion-prototype",
   "private": true,
-  "version": "5.4.1",
+  "version": "5.4.2",
   "type": "module",
   "scripts": {
     "check:runtime": "node scripts/check-mobile-runtime.mjs",
@@ -13,8 +13,8 @@
     "predev": "npm run check:runtime",
     "dev": "vite",
     "prebuild": "npm run check:runtime",
-    "build": "tsc && vite build && node scripts/prepare-sites-build.mjs",
-    "build:android": "npm run test:android && node scripts/patch-nitron-theme.mjs && tsc && vite build && node scripts/prepare-android-build.mjs && nitron build --target android"
+    "build": "tsc && vite build --emptyOutDir && node scripts/prepare-sites-build.mjs",
+    "build:android": "npm run test:android && node scripts/patch-nitron-theme.mjs && tsc && vite build --emptyOutDir && node scripts/prepare-android-build.mjs && nitron build --target android"
   },
   "dependencies": {
     "@fontsource/roboto": "5.2.10",
