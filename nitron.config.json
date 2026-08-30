@@ -1,7 +1,7 @@
 {
   "name": "החבר שלי",
   "packageId": "app.pocketcompanion.local",
-  "version": "5.6.0",
+  "version": "5.6.1",
   "entry": "android-dist/index.html",
   "orientation": "portrait",
   "statusBar": true,

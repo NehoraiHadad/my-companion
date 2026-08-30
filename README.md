@@ -2,7 +2,7 @@
 
 A local-first Android companion game inspired by the care loop of classic Tamagotchi toys, with a premium modern visual direction and a light humorous voice.
 
-## Included in v5.6.0
+## Included in v5.6.1
 
 - Four continuously time-based needs: fullness, energy, hygiene, and joy, including correct in-session decay and resume processing.
 - Feed, sleep, clean, and play actions with cross-effects and XP progression.
@@ -19,6 +19,7 @@ A local-first Android companion game inspired by the care loop of classic Tamago
 - Care score and needs now decline continuously with elapsed time. Short and long absences produce different, warm return scenes without death or guilt.
 - Opt-in care reminders where the Android WebView exposes system notifications, with an always-available in-game return recap as the fallback.
 - Capability-based BYOK routing across OpenAI API, OpenRouter, KIE, and fal.ai: language, voice, image, and video can each use a different provider and model.
+- API keys persist between launches as AES-GCM ciphertext in the app's private IndexedDB. The separately stored Web Crypto key is non-extractable, and a dedicated AI-screen action removes every saved provider key.
 - Offline situational humor tailored to the chosen subject type, plus clearer action labels and guidance.
 - Provider-neutral scene pipeline: one canonical transparent master is placed inside each full room scene with an explicit pose, room scale, perspective, light spill, occlusion, and contact shadow instead of being layered above the background.
 - Review-gated scene-animation studio: all three complete room scenes must be approved before video, one sample clip must be reviewed before the remaining pack can run, and failed clips can be resumed individually.
@@ -37,7 +38,7 @@ A local-first Android companion game inspired by the care loop of classic Tamago
 
 ## Privacy
 
-The game has no developer account or backend. Game state and imported photos stay in the app's local WebView storage. Provider keys are kept in session storage only and requests go directly from the device to the selected provider. Imported photos are uploaded only after explicit consent; generated media is downloaded immediately into local IndexedDB.
+The game has no developer account or backend. Game state and imported photos stay in the app's local WebView storage. Provider settings are encrypted with AES-GCM; ciphertext and a separate non-extractable Web Crypto key are stored in the app's private IndexedDB, and users can delete all saved provider keys from the AI screen. Requests go directly from the device to the selected provider. Imported photos are uploaded only after explicit consent; generated media is downloaded immediately into local IndexedDB.
 
 ## Development
 
@@ -51,6 +52,6 @@ The Android host source, including the local HTTPS asset loader and native image
 ## Android package
 
 - Package: `app.pocketcompanion.local`
-- Version: `5.6.0`
+- Version: `5.6.1`
 - Minimum Android: API 21
 - Target Android: API 34

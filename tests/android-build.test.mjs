@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { prepareNativeHtml } from "../scripts/prepare-android-build.mjs";
 
@@ -25,4 +26,16 @@ test("keeps production asset paths relative for the Android WebView", () => {
 
 test("fails instead of silently producing simulator mode without an html element", () => {
   assert.throws(() => prepareNativeHtml("<body></body>"), /native-apk class was not applied/);
+});
+
+test("persists API settings as AES-GCM ciphertext with a non-extractable key", async () => {
+  const source = await readFile(new URL("../src/secureAiStorage.ts", import.meta.url), "utf8");
+
+  assert.match(source, /indexedDB\.open/);
+  assert.match(source, /name: "AES-GCM"/);
+  assert.match(source, /length: 256/);
+  assert.match(source, /generateKey\([^;]+false, \["encrypt", "decrypt"\]\)/s);
+  assert.match(source, /crypto\.subtle\.encrypt/);
+  assert.match(source, /crypto\.subtle\.decrypt/);
+  assert.match(source, /deleteRecord\(SETTINGS_ID\)/);
 });

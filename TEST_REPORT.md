@@ -1,4 +1,4 @@
-# My Companion v5.6.0 — verification report
+# My Companion v5.6.1 — verification report
 
 Date: 2026-08-30
 
@@ -6,15 +6,25 @@ Date: 2026-08-30
 
 - TypeScript production type-check: passed.
 - Game and provider tests: 71/71 passed.
-- Android HTML preparation regression tests: 4/4 passed.
+- Android packaging and encrypted-storage regression tests: 5/5 passed.
 - Sites/static-host tests: 4/4 passed.
 - Protected mobile runtime integrity: 28 files passed.
-- Production web build: passed (519 modules).
+- Production web build: passed (520 modules).
 - Android packaging and signing: passed.
 - APK ZIP integrity: passed with no compressed-data errors.
 - APK packaging verification: passed in Nitron's final verification stage.
-- Output: `deliverables/My-Companion-v5.6.0.apk` (4,668,638 bytes).
-- SHA-256: `ccc5a1ef6ef85401ba88d07805a4b037e4bb13d8e8ccc2684c6ff19dd2b4c27f`.
+- Output: `deliverables/My-Companion-v5.6.1.apk` (4,668,638 bytes).
+- SHA-256: `0301d3f65f387670b6077afcb87ed10793448f11806724380f017e61588a191b`.
+
+## Encrypted API-key persistence
+
+- Provider keys now survive a normal app close and restart.
+- The persisted settings are encrypted with AES-256-GCM before being written to the app's private IndexedDB.
+- The AES key is generated through Web Crypto as non-extractable and is stored separately from the ciphertext.
+- Mutations are serialized so rapid typing cannot let an older encrypted save overwrite a newer value.
+- The AI screen exposes an explicit confirmed action that removes all stored OpenAI, OpenRouter, KIE, and fal.ai keys.
+- If Web Crypto or IndexedDB is unavailable, the app keeps the previous session-only behavior and says so in the UI.
+- APK inspection confirmed that the packaged production JavaScript contains the encrypted database, AES-GCM, key, and settings paths; no provider key is embedded in the APK.
 
 ## AI scene pipeline
 
@@ -56,10 +66,10 @@ A paid smoke test used only the built-in default puppy and sunrise-room assets; 
 
 Language, voice, image, and video remain independent routes. Each route can choose OpenAI, OpenRouter, KIE, or fal.ai and stores its own model ID. The product pipeline is provider-neutral; small adapters translate the common intent into each provider's request schema.
 
-Generated images and videos are downloaded immediately into local IndexedDB. Provider keys are session-only and no developer key is embedded in the APK.
+Generated images and videos are downloaded immediately into local IndexedDB. User-entered provider keys are encrypted locally and persist between launches; no developer key is embedded in the APK.
 
 ## Test boundary
 
-The earlier live paid test covered KIE GPT Image 2 and MiniMax H3 only. No additional paid requests were made for v5.6.0; the new approval, sample, pack, sleep-state, accounting, resume, migration, and UI paths were verified through unit tests, type-checking, mock flows, and browser QA. Other provider paths were verified through their request builders, response parsers, and polling state handling.
+The earlier live paid test covered KIE GPT Image 2 and MiniMax H3 only. No additional paid requests were made for v5.6.1; encrypted-key persistence was verified through type-checking, storage-contract tests, production packaging inspection, and the secure HTTPS origin used by the Android WebView. The cloud preview is served over HTTP and therefore correctly exercises the session-only fallback. The approval, sample, pack, sleep-state, accounting, resume, migration, and UI paths remain covered by unit tests, mock flows, and browser QA. Other provider paths were verified through their request builders, response parsers, and polling state handling.
 
 Native-mode behavior is covered by Android preparation tests and inspection of the packaged HTML, which contains the `native-apk` marker and therefore hides simulator chrome. The generic Vite warning for a JavaScript chunk larger than 500 kB remains and does not block packaging.

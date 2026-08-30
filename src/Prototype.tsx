@@ -18,6 +18,7 @@ import {
 } from "./mediaProviders";
 import { loadClip, loadMedia, removeClips, removeMedia, saveClip, saveMedia } from "./mediaStore";
 import { Carousel, KeyboardInput, MobileScroll, useKeyboard } from "./mobile";
+import { clearEncryptedAiSettings, hasEncryptedAiStorage, readEncryptedAiSettings, saveEncryptedAiSettings } from "./secureAiStorage";
 import {
   HOUR, absenceMessage, ageDay, applyElapsed, arcadePayoutScale, arcadeRewardBonus, buyDecoration, chooseBuild, claimDailyQuest, claimStreakMilestone, claimWeekly, clamp, createDefaultState, currentStage,
   decorMeta, isDecorUnlocked, localDayKey, localWeekKey, nextStage, performCareAction, personaBuildMeta, questPool, recordArcadeRun, recordPurchase, stageMeta, stageOrder, stageUnlocks,
@@ -266,17 +267,20 @@ function loadState(): GameState {
   return { ...initial, visualRevision: now };
 }
 
+function normalizeAi(merged: Partial<AiSettings>): AiSettings {
+  const migratedProvider: MediaProvider = merged.provider ?? (merged.openRouterKey || merged.textModel?.includes("/") ? "openrouter" : "openai");
+  const oldTextModel = !merged.textModel || ["gpt-5-mini", "openai/gpt-5-mini"].includes(merged.textModel);
+  const legacyMedia = (merged as AiSettings & { mediaProvider?: MediaProvider }).mediaProvider;
+  return { ...defaultAi, ...merged, provider: migratedProvider, voiceProvider: merged.voiceProvider ?? migratedProvider, imageProvider: merged.imageProvider ?? legacyMedia ?? migratedProvider, videoProvider: merged.videoProvider ?? legacyMedia ?? "openrouter", textModel: oldTextModel ? (migratedProvider === "openai" ? "gpt-5.6-luna" : "openai/gpt-5.6-luna") : merged.textModel! };
+}
+
 function loadAi(): AiSettings {
   try {
     const current = JSON.parse(sessionStorage.getItem(AI_KEY) ?? "{}") as Partial<AiSettings>;
     const v4 = JSON.parse(sessionStorage.getItem("little-friend-ai-v4") ?? "{}") as Partial<AiSettings>;
     const v3 = JSON.parse(sessionStorage.getItem("little-friend-ai-v3") ?? "{}") as Partial<AiSettings>;
     const previous = JSON.parse(sessionStorage.getItem("little-friend-ai-v2") ?? "{}") as Partial<AiSettings>;
-    const merged = { ...previous, ...v3, ...v4, ...current };
-    const migratedProvider: MediaProvider = merged.provider ?? (merged.openRouterKey || merged.textModel?.includes("/") ? "openrouter" : "openai");
-    const oldTextModel = !merged.textModel || ["gpt-5-mini", "openai/gpt-5-mini"].includes(merged.textModel);
-    const legacyMedia = (merged as any).mediaProvider as MediaProvider | undefined;
-    return { ...defaultAi, ...merged, provider: migratedProvider, voiceProvider: merged.voiceProvider ?? migratedProvider, imageProvider: merged.imageProvider ?? legacyMedia ?? migratedProvider, videoProvider: merged.videoProvider ?? legacyMedia ?? "openrouter", textModel: oldTextModel ? (migratedProvider === "openai" ? "gpt-5.6-luna" : "openai/gpt-5.6-luna") : merged.textModel! };
+    return normalizeAi({ ...previous, ...v3, ...v4, ...current });
   }
   catch { return defaultAi; }
 }
@@ -342,6 +346,8 @@ export default function Prototype() {
   const [eventText, setEventText] = useState("");
   const [eventVariant, setEventVariant] = useState<EventVariant>("event");
   const [ai, setAi] = useState<AiSettings>(loadAi);
+  const encryptedAiStorage = hasEncryptedAiStorage();
+  const [encryptedAiLoaded, setEncryptedAiLoaded] = useState(!encryptedAiStorage);
   const [aiStatus, setAiStatus] = useState<"idle" | "testing" | "ready" | "error">("idle");
   const [mediaStatus, setMediaStatus] = useState<"idle" | "testing" | "ready" | "error">("idle");
   const [voiceStatus, setVoiceStatus] = useState<"idle" | "testing" | "ready" | "error">("idle");
@@ -398,9 +404,20 @@ export default function Prototype() {
     catch { setPersistFailed(true); /* the game keeps running from memory even when the device refuses to store */ }
   }, [game]);
   useEffect(() => {
-    try { sessionStorage.setItem(AI_KEY, JSON.stringify(ai)); }
+    try {
+      sessionStorage.setItem(AI_KEY, JSON.stringify(ai));
+      if (encryptedAiLoaded && encryptedAiStorage) void saveEncryptedAiSettings(ai);
+    }
     catch { /* a locked-down browser still lets the session run from memory */ }
-  }, [ai]);
+  }, [ai, encryptedAiLoaded, encryptedAiStorage]);
+  useEffect(() => {
+    if (!encryptedAiStorage) return;
+    let active = true;
+    void readEncryptedAiSettings().then((saved) => {
+      if (active && Object.keys(saved).length) setAi((current) => normalizeAi({ ...current, ...saved } as Partial<AiSettings>));
+    }).finally(() => { if (active) setEncryptedAiLoaded(true); });
+    return () => { active = false; };
+  }, [encryptedAiStorage]);
   useEffect(() => { revisionRef.current = game.visualRevision; }, [game.visualRevision]);
   useEffect(() => () => { if (motionTimerRef.current) window.clearTimeout(motionTimerRef.current); }, []);
   useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
@@ -1564,6 +1581,15 @@ export default function Prototype() {
     closeAllOverlays(); setScreen("home");
   };
 
+  const clearSavedAiKeys = () => {
+    void clearEncryptedAiSettings();
+    for (const key of [AI_KEY, "little-friend-ai-v4", "little-friend-ai-v3", "little-friend-ai-v2"]) sessionStorage.removeItem(key);
+    setAi((current) => ({ ...current, openAiKey: "", openRouterKey: "", kieKey: "", falKey: "" }));
+    setAiStatus("idle"); setVoiceStatus("idle"); setMediaStatus("idle"); setVideoStatus("idle");
+    clearAiError();
+    say("המפתחות נמחקו מהמכשיר.");
+  };
+
   const goToBag = () => { closeAllOverlays(); setScreen("bag"); };
   const overlayOpen = Boolean(overlay);
   const photoBlock = !game.photo ? "צריך תמונה אמיתית של הדמות" : "";
@@ -1617,11 +1643,11 @@ export default function Prototype() {
         {overlay === "ai" ? <FullPage title="AI" subtitle="בוחרים ספק ומודל נפרד לכל יכולת" onBack={popOverlay}><div className="form-stack ai-panel">
           <div className="ai-step-title"><span>1</span><div><strong>המוח של הדמות</strong><small>טקסט, הומור, זיכרונות וקול.</small></div></div>
           <div className="media-provider-grid" role="group" aria-label="בחירת ספק שפה">{(Object.entries(mediaProviderMeta) as Array<[MediaProvider,(typeof mediaProviderMeta)[MediaProvider]]>).map(([provider, meta]) => <button key={provider} className={ai.provider === provider ? "active" : ""} onClick={() => changeProvider(provider)}><span>{meta.short}</span><strong>{meta.title}</strong><small>שפה</small></button>)}</div>
-          <div className={`connection-card ${aiStatus}`}><div className={`or-logo ${ai.provider}`}>{mediaProviderMeta[ai.provider as MediaProvider].short}</div><div><strong>{mediaProviderMeta[ai.provider as MediaProvider].title}</strong><span>{aiStatus === "ready" ? "מסלול השפה מוכן" : aiStatus === "testing" ? "בודקים חיבור…" : "מפתח אישי · נשמר עד סגירת האפליקציה"}</span></div><i /></div>
+          <div className={`connection-card ${aiStatus}`}><div className={`or-logo ${ai.provider}`}>{mediaProviderMeta[ai.provider as MediaProvider].short}</div><div><strong>{mediaProviderMeta[ai.provider as MediaProvider].title}</strong><span>{aiStatus === "ready" ? "מסלול השפה מוכן" : aiStatus === "testing" ? "בודקים חיבור…" : encryptedAiStorage ? "מפתח אישי · נשמר מוצפן במכשיר" : "מפתח אישי · נשמר עד סגירת האפליקציה"}</span></div><i /></div>
           {ai.provider === "openai" ? <div className="subscription-note"><LockClosedIcon /><div><strong>נדרש OpenAI API key</strong><span>מנוי ChatGPT וה־API הם מוצרים נפרדים.</span></div></div> : null}
           <label htmlFor="api-key">מפתח {mediaProviderMeta[ai.provider as MediaProvider].title}</label>
           <KeyboardInput id="api-key" className="text-field ltr" type="password" placeholder="API key" value={keyFor(ai.provider as MediaProvider)} onChange={(event) => { const value = event.target.value; setAi((current) => ai.provider === "openai" ? ({ ...current, openAiKey: value }) : ai.provider === "openrouter" ? ({ ...current, openRouterKey: value }) : ai.provider === "kie" ? ({ ...current, kieKey: value }) : ({ ...current, falKey: value })); setAiStatus("idle"); }} />
-          <div className="small-note">המפתחות נשמרים רק עד סגירת האפליקציה — זו הגנה, לא באג.</div>
+          <div className="small-note">{encryptedAiStorage ? "המפתחות מוצפנים באמצעות AES-GCM ונשמרים גם לאחר סגירת האפליקציה. מפתח ההצפנה אינו ניתן לייצוא ונשמר בנפרד במסד הנתונים הפרטי של האפליקציה." : "המכשיר אינו תומך באחסון המוצפן; המפתחות יישמרו רק עד סגירת האפליקציה."}</div>
           <button className="wide-button accent" disabled={aiStatus === "testing"} onClick={testAi}>{aiStatus === "testing" ? <ClockIcon /> : <LightningBoltIcon />}{aiStatus === "testing" ? "בודקים…" : "בדיקת חיבור המוח"}</button>
           {aiErrorFor("text", aiStatus === "error")}
           <div className="ai-step-title"><span>2</span><div><strong>ניתוב לפי יכולת</strong><small>כל פעולה יכולה להשתמש בספק אחר.</small></div></div>
@@ -1629,7 +1655,8 @@ export default function Prototype() {
           <article className="route-card"><div><CameraIcon /><span><strong>תמונה</strong><small>דמות מאסטר וגרסאות חדר</small></span></div><div className="media-provider-grid compact">{(Object.entries(mediaProviderMeta) as Array<[MediaProvider,(typeof mediaProviderMeta)[MediaProvider]]>).map(([provider, meta]) => <button key={provider} className={ai.imageProvider === provider ? "active" : ""} onClick={() => changeMediaProvider(provider)}><span>{meta.short}</span><strong>{meta.title}</strong></button>)}</div><button className="mini-connect" disabled={mediaStatus === "testing"} onClick={testMedia}>{mediaStatus === "ready" ? <CheckIcon /> : <LightningBoltIcon />}{mediaStatus === "ready" ? "תמונה מוכנה" : "בדיקת תמונה"}</button>{aiErrorFor("image")}</article>
           <article className="route-card"><div><PlayIcon /><span><strong>וידאו</strong><small>תמונה לווידאו עבור זהות עקבית</small></span></div><div className="media-provider-grid compact">{(Object.entries(mediaProviderMeta) as Array<[MediaProvider,(typeof mediaProviderMeta)[MediaProvider]]>).map(([provider, meta]) => <button key={provider} className={ai.videoProvider === provider ? "active" : ""} onClick={() => changeVideoProvider(provider)}><span>{meta.short}</span><strong>{meta.title}</strong></button>)}</div><button className="mini-connect" disabled={videoStatus === "testing"} onClick={testVideo}>{videoStatus === "ready" ? <CheckIcon /> : <LightningBoltIcon />}{videoStatus === "ready" ? "וידאו מוכן" : "בדיקת וידאו"}</button>{ai.videoProvider === "openai" ? <small className="legacy-warning">Sora 2 API מסומן כ־Legacy וצפוי להיסגר ב־24.9.2026; עדיף לבחור OpenRouter, KIE או fal.ai.</small> : null}{aiErrorFor("video")}</article>
           <details className="provider-keys"><summary>מפתחות לכל הספקים</summary><div>{(["openai","openrouter","kie","fal"] as MediaProvider[]).map((provider) => <label key={provider}><span>{mediaProviderMeta[provider].title}</span><KeyboardInput className="text-field ltr" type="password" placeholder="API key" value={keyFor(provider)} onChange={(event) => { const value = event.target.value; setAi((current) => provider === "openai" ? ({ ...current, openAiKey: value }) : provider === "openrouter" ? ({ ...current, openRouterKey: value }) : provider === "kie" ? ({ ...current, kieKey: value }) : ({ ...current, falKey: value })); setAiStatus("idle"); setVoiceStatus("idle"); setMediaStatus("idle"); setVideoStatus("idle"); }} /></label>)}</div></details>
-          <div className="privacy-note"><LockClosedIcon />אין מפתח שמוטמע ב־APK. המפתח קיים רק בסשן הנוכחי; התמונות והסרטונים מורדים ונשמרים במכשיר.</div>
+          <div className="privacy-note"><LockClosedIcon />אין מפתח שמוטמע ב־APK. {encryptedAiStorage ? "המפתחות שהזנת נשמרים מוצפנים במכשיר ואינם יוצאים ממנו מלבד הקריאות לספק שבחרת." : "המפתח קיים רק בסשן הנוכחי."} התמונות והסרטונים מורדים ונשמרים במכשיר.</div>
+          {encryptedAiStorage ? <ConfirmAction className="wide-button danger" icon={<TrashIcon />} label="מחיקת מפתחות ה־AI מהמכשיר" question="למחוק את כל מפתחות הספקים השמורים במכשיר?" confirmLabel="מחיקת מפתחות" onConfirm={clearSavedAiKeys} /> : null}
           <div className="ai-step-title"><span>3</span><div><strong>בוחרים מה להפעיל</strong><small>המוח והמדיה עצמאיים; אין צורך להפעיל הכול.</small></div></div>
           <article className="ai-feature-card"><div className="ai-section-title"><FaceIcon /><div><strong>אופי וקול</strong><span>בדיחות, זיכרונות וקול שמתאימים למצב הנוכחי.</span></div></div>
           <div className="ai-chat-row"><KeyboardInput aria-label="דבר עם הדמות" className="text-field" placeholder={`מה להגיד ל${game.name}?`} value={chatInput} onChange={(event) => setChatInput(event.target.value.slice(0, 160))} /><button aria-label="שליחה" disabled={aiStatus !== "ready" || isThinking} onClick={() => { mobileKeyboard.hide(); void askAi(chatInput || undefined); setChatInput(""); }}><PaperPlaneIcon /></button></div>
