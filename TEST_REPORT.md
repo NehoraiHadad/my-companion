@@ -1,19 +1,20 @@
-# My Companion v5.4.0 — verification report
+# My Companion v5.4.1 — verification report
 
-Date: 2026-08-29
+Date: 2026-08-30
 
 ## Result
 
 - TypeScript production type-check: passed.
 - Game and provider tests: 67/67 passed.
+- Android HTML preparation regression tests: 4/4 passed.
 - Sites/static-host tests: 4/4 passed.
 - Protected mobile runtime integrity: 28 files passed.
 - Production web build: passed (519 modules).
 - Live mobile browser pass: passed for fresh onboarding, the home room, and the decoration shelves.
 - Android packaging, signing, and Nitron verification: passed.
 - APK ZIP integrity: passed with no compressed-data errors.
-- Output: `deliverables/My-Companion-v5.4.0.apk` (4,664,542 bytes).
-- SHA-256: `cd2a295637db294df2fd7e72a544fb650335acd7f5927e426067b536d3675d52`.
+- Output: `deliverables/My-Companion-v5.4.1.apk` (4,664,542 bytes).
+- SHA-256: `ca61b18b57360c438c3354c9d584617929f2de43bbfdc74daef0f7eea4a46767`.
 
 ## Fixes covered
 
@@ -24,7 +25,8 @@ Date: 2026-08-29
 - Care actions award XP, quest progress, weekly progress, and personality changes only when they actually help the companion. Repeated taps at full needs and interrupting sleep can no longer farm rewards.
 - Reports and automatic AI events are triggered only by rewarded care actions.
 - Decoration artwork is loaded as a separate lazy chunk. The main production JavaScript chunk is 599,207 bytes and the decoration chunk is 37,147 bytes.
-- Product version, README, durable project decisions, and test documentation now agree on version 5.4.0.
+- Android packaging applies `native-apk` to the current Hebrew HTML document instead of matching only the obsolete English tag. The build now fails explicitly if native mode cannot be applied.
+- Product version, README, durable project decisions, and test documentation now agree on version 5.4.1.
 
 ## Browser evidence
 
@@ -33,6 +35,7 @@ Date: 2026-08-29
 - The companion bounding box remained fully inside the room scene after onboarding.
 - The first decoration shelf was open while later shelves displayed the expected evolution-stage locks.
 - No application-origin browser console errors were observed during this pass.
+- The packaged HTML was previewed in native mode: the device picker, bezel, and simulated camera were hidden while the game remained visible on the full surface.
 
 ## Provider architecture retained
 

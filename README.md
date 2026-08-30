@@ -2,13 +2,13 @@
 
 A local-first Android companion game inspired by the care loop of classic Tamagotchi toys, with a premium modern visual direction and a light humorous voice.
 
-## Included in v5.4.0
+## Included in v5.4.1
 
 - Four continuously time-based needs: fullness, energy, hygiene, and joy, including correct in-session decay and resume processing.
 - Feed, sleep, clean, and play actions with cross-effects and XP progression.
 - Offline persistence with elapsed-time decay; the companion never dies and can always recover.
 - Three switchable themes: Midnight 3D, colorful Sunrise, and classic monochrome LCD.
-- Required creation flow with an explicit person, baby, or pet choice, name, photo, and room; no default companion is forced on first launch.
+- Required creation flow with an explicit person, baby, or pet choice, name, optional photo, and room; no default companion is forced on first launch.
 - Day and visit-streak progression, daily reset/bonus, return summaries, age-gated evolution, and bounded recovery after long absence.
 - A room-first home screen: the companion is the visual focus, detailed statistics expand only when requested, and character creation/AI controls live in settings instead of floating over play.
 - A continuous full-height game surface and a bottom navigation rail anchored to the screen edge, with clearer destinations: home, games, goals, and bag.
