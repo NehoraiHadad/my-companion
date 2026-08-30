@@ -31,12 +31,13 @@ const motionDirection: Record<CompanionMotion, string> = {
 export function buildAnimationPrompt(kind: CharacterKind, name: string, motion: CompanionMotion) {
   const safeKind = kind || "person";
   return [
-    "Single-shot premium 2.5D virtual-companion game animation.",
-    `${kindDescription[safeKind]} from the reference image is ${name || "the companion"}. Preserve identity, age, face, hair or fur, outfit, colors, body proportions, and art style exactly.`,
+    "Single-shot seamless full-scene virtual-companion game loop from the approved reference frame.",
+    `${kindDescription[safeKind]} in the reference scene is ${name || "the companion"}. Preserve identity, age, face, hair or fur, outfit, colors, body proportions, exact room position, contact surface, lighting, and art style.`,
     kindGuardrail[safeKind],
     motionDirection[motion],
-    "Locked front-facing camera. Full body always visible and centered. No camera movement, cuts, zoom, morphing, extra limbs, duplicate subject, text, logo, UI, or watermark.",
-    "Use a simple dark navy studio background with a soft floor shadow. Family-friendly, warm, lightly comedic, smooth readable motion, seamless game-loop timing. No dialogue and no generated audio.",
+    "Keep the camera and every room object completely locked. The body stays physically grounded on the same rug, cushion, or floor surface for the whole motion.",
+    "No camera movement, cuts, zoom, sliding, floating, morphing, extra limbs, duplicate subject, text, logo, UI, or watermark.",
+    "Family-friendly, warm, lightly comedic, smooth readable motion, seamless game-loop timing. No dialogue and no generated audio.",
   ].join(" ");
 }
 
@@ -47,20 +48,30 @@ export function buildAnimationRequest(input: {
   name: string;
   motion: CompanionMotion;
   resolution?: string;
+  supportedResolutions?: string[];
+  supportedFrameImages?: string[];
 }) {
+  const efficientResolution = input.resolution || ["1K", "768p", "720p", "1080p", "2K", "4K"].find((resolution) => input.supportedResolutions?.includes(resolution)) || "720p";
+  const frameImages: Array<{ type: "image_url"; image_url: { url: string }; frame_type: "first_frame" | "last_frame" }> = [{
+    type: "image_url",
+    image_url: { url: input.photoDataUrl },
+    frame_type: "first_frame",
+  }];
+  if (input.supportedFrameImages?.includes("last_frame")) frameImages.push({
+    type: "image_url",
+    image_url: { url: input.photoDataUrl },
+    frame_type: "last_frame",
+  });
   return {
     model: input.model,
     prompt: buildAnimationPrompt(input.kind, input.name, input.motion),
     duration: motionMeta[input.motion].duration,
-    aspect_ratio: "1:1",
-    resolution: input.resolution || (input.model === "minimax/hailuo-3" ? "2K" : "720p"),
+    aspect_ratio: "9:16",
+    resolution: efficientResolution,
     generate_audio: false,
-    frame_images: [{
-      type: "image_url",
-      image_url: { url: input.photoDataUrl },
-      frame_type: "first_frame",
-    }],
+    frame_images: frameImages,
   };
 }
 
 export const animationStorageKey = (visualRevision: number, motion: CompanionMotion) => `v${visualRevision}:${motion}`;
+export const sceneAnimationStorageKey = (visualRevision: number, theme: string, motion: CompanionMotion) => `v${visualRevision}:scene:${theme}:${motion}`;

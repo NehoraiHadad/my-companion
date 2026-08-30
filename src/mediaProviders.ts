@@ -21,11 +21,22 @@ export const defaultCapabilityModels: Record<MediaProvider, { text: string; voic
   fal: { text: "google/gemini-2.5-flash", voice: "fal-ai/elevenlabs/tts/multilingual-v2", image: "fal-ai/nano-banana-2/edit", video: "fal-ai/wan/v2.2-5b/image-to-video" },
 };
 
-export function buildKieImageTask(model: string, prompt: string, inputUrls: string[]) {
-  return { model, input: { prompt, input_urls: inputUrls, aspect_ratio: "1:1" } };
+export function buildKieImageTask(model: string, prompt: string, inputUrls: string[], aspectRatio = "1:1") {
+  return { model, input: { prompt, input_urls: inputUrls, aspect_ratio: aspectRatio } };
 }
 
 export function buildKieVideoTask(model: string, prompt: string, firstFrameUrl: string, duration = 5) {
+  if (model.includes("minimax-h3")) {
+    return {
+      model: model.includes("/") ? model : "minimax-h3/image-to-video",
+      input: {
+        prompt,
+        first_frame_url: firstFrameUrl,
+        last_frame_url: firstFrameUrl,
+        duration: Math.max(5, Math.min(15, duration === 5 ? 6 : duration)),
+      },
+    };
+  }
   return {
     model,
     input: {
@@ -34,19 +45,19 @@ export function buildKieVideoTask(model: string, prompt: string, firstFrameUrl: 
       return_last_frame: false,
       generate_audio: false,
       resolution: "720p",
-      aspect_ratio: "1:1",
+      aspect_ratio: "9:16",
       duration,
       web_search: false,
     },
   };
 }
 
-export function buildFalImageTask(prompt: string, imageUrls: string[]) {
+export function buildFalImageTask(prompt: string, imageUrls: string[], aspectRatio = "1:1") {
   return {
     prompt,
     image_urls: imageUrls,
     num_images: 1,
-    aspect_ratio: "1:1",
+    aspect_ratio: aspectRatio,
     output_format: "webp",
     resolution: "1K",
     limit_generations: true,
@@ -60,7 +71,7 @@ export function buildFalVideoTask(prompt: string, imageUrl: string) {
     num_frames: 81,
     frames_per_second: 24,
     resolution: "720p",
-    aspect_ratio: "1:1",
+    aspect_ratio: "9:16",
     enable_safety_checker: true,
     enable_output_safety_checker: true,
     enable_prompt_expansion: false,

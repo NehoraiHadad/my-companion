@@ -1,6 +1,7 @@
 import type { CharacterKind, DecorKey, StageId, ThemeId } from "./gameEngine";
 
 export type CharacterVisual = "master" | ThemeId;
+export type ScenePose = "sitting" | "resting" | "standing";
 
 const subjectIdentity: Record<Exclude<CharacterKind, "">, string> = {
   person: "the same human person",
@@ -72,7 +73,70 @@ export function buildOpenRouterCharacterRequest(input: {
 
 export const characterStorageKey = (visualRevision: number, visual: CharacterVisual) => `v${visualRevision}:character:${visual}`;
 
-export const characterVisuals: CharacterVisual[] = ["master", "sunrise", "midnight", "classic"];
+export const characterVisuals: CharacterVisual[] = ["master"];
+
+export const scenePose: Record<ThemeId, Record<Exclude<CharacterKind, "">, ScenePose>> = {
+  sunrise: { person: "sitting", baby: "sitting", pet: "sitting" },
+  midnight: { person: "resting", baby: "resting", pet: "resting" },
+  classic: { person: "standing", baby: "sitting", pet: "sitting" },
+};
+
+const poseDirection: Record<ScenePose, Record<Exclude<CharacterKind, "">, string>> = {
+  sitting: {
+    person: "sitting naturally and comfortably on the main rug, with the body fully supported by it",
+    baby: "sitting safely in an age-appropriate pose on the main rug, with the body fully supported by it",
+    pet: "sitting naturally on the main rug with all paws and body weight visibly grounded",
+  },
+  resting: {
+    person: "resting naturally on the soft central floor area in a comfortable, anatomically correct pose",
+    baby: "lying safely on their back on the soft central rug or cushion in an age-appropriate resting pose",
+    pet: "lying naturally on the soft central rug or cushion with the body visibly supported",
+  },
+  standing: {
+    person: "standing naturally on the central floor with both feet visibly grounded",
+    baby: "sitting safely on the central floor mat in an age-appropriate pose",
+    pet: "standing naturally on the central floor with all paws visibly grounded",
+  },
+};
+
+export function buildSceneCompositePrompt(kind: CharacterKind, name: string, theme: ThemeId, stage?: StageId) {
+  const safeKind = kind || "person";
+  const pose = scenePose[theme][safeKind];
+  return [
+    "Use the first image as the immutable base room and the second image as the canonical companion identity reference.",
+    "Return the full portrait room. Keep the exact camera, framing, furniture, architecture, decorations, proportions, palette, and composition of the first image.",
+    themeDirection[theme],
+    `Place exactly one ${subjectIdentity[safeKind]}, named ${name || "the companion"}, ${poseDirection[pose][safeKind]}.`,
+    "Identity is the highest priority: preserve the exact face, apparent age, hair or fur, skin tone, clothing, colors, markings, body proportions, and distinctive features from the second image.",
+    subjectGuardrail[safeKind],
+    stage ? stageFlair[stage] : "",
+    "Match the room's scale, floor perspective, light direction, color spill, depth, and occlusion. Add a subtle physically believable contact shadow directly under the body so the companion never floats.",
+    "Do not redesign the room or companion. No extra people, animals, duplicate subject, extra limbs, text, logo, UI, border, frame, or watermark.",
+  ].filter(Boolean).join(" ");
+}
+
+export function buildOpenRouterSceneRequest(input: {
+  model: string;
+  roomReference: string;
+  identityReference: string;
+  kind: CharacterKind;
+  name: string;
+  theme: ThemeId;
+  stage?: StageId;
+}) {
+  return {
+    model: input.model,
+    prompt: buildSceneCompositePrompt(input.kind, input.name, input.theme, input.stage),
+    input_references: [input.roomReference, input.identityReference].map((url) => ({ type: "image_url", image_url: { url } })),
+    n: 1,
+    aspect_ratio: "9:16",
+    quality: "medium",
+    output_format: "webp",
+    background: "opaque",
+  };
+}
+
+export const sceneStorageKey = (visualRevision: number, theme: ThemeId, roomSet = "base") => `v${visualRevision}:scene:${theme}:${roomSet || "base"}`;
 
 export const decorPrompt: Record<DecorKey, string> = {
   lamp: "a small cozy bedside lamp with a star-patterned shade, glowing softly",

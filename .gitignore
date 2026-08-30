@@ -18,6 +18,7 @@ local.properties
 # Generated packages and local QA captures
 *.apk
 design-qa-*.png
+artifacts/live-ai-smoke/
 
 # Editor / OS files
 .DS_Store

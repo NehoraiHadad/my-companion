@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCharacterPrompt, buildOpenRouterCharacterRequest, buildRoomUpgradePrompt, characterStorageKey, characterVisuals, decorPrompt, decorSetKey, roomStorageKey, stageFlair } from "../src/characterDirector.ts";
+import { buildCharacterPrompt, buildOpenRouterCharacterRequest, buildOpenRouterSceneRequest, buildRoomUpgradePrompt, buildSceneCompositePrompt, characterStorageKey, characterVisuals, decorPrompt, decorSetKey, roomStorageKey, sceneStorageKey, stageFlair } from "../src/characterDirector.ts";
 
 test("master prompt creates one transparent canonical game character", () => {
   const prompt = buildCharacterPrompt("baby", "נועה", "master");
@@ -40,9 +40,24 @@ test("OpenRouter image request includes all ordered references and transparent o
   assert.equal(request.aspect_ratio, "1:1");
 });
 
-test("character kit has one master and exactly three room variants", () => {
-  assert.deepEqual(characterVisuals, ["master", "sunrise", "midnight", "classic"]);
-  assert.equal(characterStorageKey(12, "midnight"), "v12:character:midnight");
+test("character kit stores one canonical master and full room scenes separately", () => {
+  assert.deepEqual(characterVisuals, ["master"]);
+  assert.equal(characterStorageKey(12, "master"), "v12:character:master");
+  assert.equal(sceneStorageKey(12, "midnight", "lamp,rug"), "v12:scene:midnight:lamp,rug");
+});
+
+test("scene composition anchors the same identity to a believable room surface", () => {
+  const prompt = buildSceneCompositePrompt("baby", "נועה", "sunrise", "kid");
+  assert.match(prompt, /first image as the immutable base room/);
+  assert.match(prompt, /second image as the canonical companion identity/);
+  assert.match(prompt, /sitting safely.*main rug/);
+  assert.match(prompt, /contact shadow/);
+  assert.match(prompt, /never floats/);
+  const request = buildOpenRouterSceneRequest({ model: "openai/gpt-image-2", roomReference: "room", identityReference: "identity", kind: "baby", name: "נועה", theme: "sunrise" });
+  assert.equal(request.input_references[0].image_url.url, "room");
+  assert.equal(request.input_references[1].image_url.url, "identity");
+  assert.equal(request.aspect_ratio, "9:16");
+  assert.equal(request.background, "opaque");
 });
 
 test("decor set key is stable regardless of purchase order", () => {
