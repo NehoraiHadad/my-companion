@@ -4,6 +4,7 @@ import {
   buildFalImageTask, buildFalVideoTask, buildKieImageTask, buildKieVideoTask,
   defaultCapabilityModels, parseFalAudioUrl, parseFalMediaUrl, parseFalSubmission,
   parseFalText, parseKieTask, parseKieTaskId,
+  estimateVideoCredits,
 } from "../src/mediaProviders.ts";
 
 test("every provider has defaults for all four capability routes", () => {
@@ -40,4 +41,10 @@ test("fal builders and queue parsers support image, video, text and voice", () =
   assert.equal(parseFalMediaUrl({ video: { url: "video.mp4" } }), "video.mp4");
   assert.equal(parseFalText({ output: "hello" }), "hello");
   assert.equal(parseFalAudioUrl({ audio: { url: "voice.mp3" } }), "voice.mp3");
+});
+
+test("published KIE estimates are explicit and unknown provider prices stay unknown", () => {
+  assert.equal(estimateVideoCredits("kie", "bytedance/seedance-2-mini", 5), 12);
+  assert.equal(estimateVideoCredits("kie", "minimax-h3/image-to-video", 5), 156);
+  assert.equal(estimateVideoCredits("fal", "fal-ai/wan/v2.2-5b/image-to-video", 5), null);
 });

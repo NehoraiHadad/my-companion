@@ -52,6 +52,14 @@ export function buildKieVideoTask(model: string, prompt: string, firstFrameUrl: 
   };
 }
 
+export function estimateVideoCredits(provider: MediaProvider, model: string, duration = 5): number | null {
+  if (provider !== "kie") return null;
+  const normalized = model.toLowerCase();
+  if (normalized.includes("minimax-h3")) return 26 * Math.max(6, duration);
+  if (normalized.includes("seedance-2-mini")) return 2.4 * duration;
+  return null;
+}
+
 export function buildFalImageTask(prompt: string, imageUrls: string[], aspectRatio = "1:1") {
   return {
     prompt,

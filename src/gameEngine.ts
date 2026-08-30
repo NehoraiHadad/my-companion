@@ -1,6 +1,17 @@
 export type ThemeId = "midnight" | "sunrise" | "classic";
 export type CharacterKind = "person" | "baby" | "pet" | "";
 export type CompanionMotion = "idle" | "eat" | "play" | "sleep" | "celebrate";
+export type SceneState = "sleep";
+export type AnimationAssetStatus = "queued" | "generating" | "ready" | "failed";
+export type AnimationAssetRecord = {
+  status: AnimationAssetStatus;
+  provider: string;
+  model: string;
+  generatedAt?: number;
+  credits?: number;
+  error?: string;
+};
+export type AnimationSample = { theme: ThemeId; motion: CompanionMotion; approved: boolean };
 export type NeedKey = "fullness" | "energy" | "hygiene" | "mood";
 export type StageId = "baby" | "kid" | "teen" | "grown" | "mentor" | "legend";
 export type PersonalityId = "curious" | "cozy" | "comic";
@@ -56,7 +67,12 @@ export type GameState = {
   characterVariants: Partial<Record<ThemeId, boolean>>;
   aiRooms: Partial<Record<ThemeId, string>>;
   aiScenes: Partial<Record<ThemeId, string>>;
+  aiSceneApprovals: Partial<Record<ThemeId, boolean>>;
+  aiStateScenes: Partial<Record<ThemeId, Partial<Record<SceneState, string>>>>;
   sceneAnimationSlots: Partial<Record<ThemeId, Partial<Record<CompanionMotion, boolean>>>>;
+  animationAssets: Partial<Record<ThemeId, Partial<Record<CompanionMotion, AnimationAssetRecord>>>>;
+  animationSample?: AnimationSample;
+  aiUsage: { imageCredits: number; videoCredits: number };
   notificationsEnabled: boolean;
   guideSeen: boolean;
   decorations: Partial<Record<DecorKey, boolean>>;
@@ -105,7 +121,7 @@ export function createDefaultState(now = Date.now()): GameState {
     inventory: { apple: 3, meal: 1, soap: 2, medicine: 1, ball: 1 },
     streak: 1, bestStreak: 1, lastVisitKey: dayKey, nextMessAt: now + 5.5 * HOUR,
     sleepingUntil: 0, awayMinutes: 0, memories: [], visualRevision: 1, animationSlots: {},
-    aiCharacter: false, characterVariants: {}, aiRooms: {}, aiScenes: {}, sceneAnimationSlots: {},
+    aiCharacter: false, characterVariants: {}, aiRooms: {}, aiScenes: {}, aiSceneApprovals: {}, aiStateScenes: {}, sceneAnimationSlots: {}, animationAssets: {}, aiUsage: { imageCredits: 0, videoCredits: 0 },
     notificationsEnabled: false, guideSeen: false,
     decorations: {}, claimedMilestones: [],
   };

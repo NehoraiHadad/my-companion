@@ -2,7 +2,7 @@
 
 A local-first Android companion game inspired by the care loop of classic Tamagotchi toys, with a premium modern visual direction and a light humorous voice.
 
-## Included in v5.5.0
+## Included in v5.6.0
 
 - Four continuously time-based needs: fullness, energy, hygiene, and joy, including correct in-session decay and resume processing.
 - Feed, sleep, clean, and play actions with cross-effects and XP progression.
@@ -21,7 +21,10 @@ A local-first Android companion game inspired by the care loop of classic Tamago
 - Capability-based BYOK routing across OpenAI API, OpenRouter, KIE, and fal.ai: language, voice, image, and video can each use a different provider and model.
 - Offline situational humor tailored to the chosen subject type, plus clearer action labels and guidance.
 - Provider-neutral scene pipeline: one canonical transparent master is placed inside each full room scene with an explicit pose, room scale, perspective, light spill, occlusion, and contact shadow instead of being layered above the background.
-- Optional scene-animation studio. Each motion starts from the approved full room frame, locks the camera and room, prefers 1K/768p/720p when a provider exposes those choices, and reuses the same first and last frame when supported for cleaner loops.
+- Review-gated scene-animation studio: all three complete room scenes must be approved before video, one sample clip must be reviewed before the remaining pack can run, and failed clips can be resumed individually.
+- Five room-specific motions — idle, eat, play, sleep, and celebrate — are stored for each room. Transient actions return to the approved idle scene; sleep uses a separately generated sleeping still and a stable breathing loop.
+- Each full-scene motion locks the camera and room, uses 720p or another efficient supported resolution, and reuses the same first and last frame when supported. No transparent floating-character video is used in the production path.
+- KIE video jobs record the credits actually deducted per clip; the studio also shows a published-price estimate before batch generation when the selected KIE model has a known rate.
 - Documented adapters for OpenAI, OpenRouter, KIE, and fal.ai keep the product flow identical while translating it to each provider's image and video schema. KIE MiniMax H3 remains an optional high-quality route; the lower-cost Seedance Mini route remains its default.
 - Optional asynchronous video dreams through the selected video route.
 - A reorganized AI studio with independent provider and model choices for text, speech, image editing, and image-to-video. OpenAI Sora 2 is marked Legacy with its announced shutdown date; OpenRouter is the default video route.
@@ -48,6 +51,6 @@ The Android host source, including the local HTTPS asset loader and native image
 ## Android package
 
 - Package: `app.pocketcompanion.local`
-- Version: `5.5.0`
+- Version: `5.6.0`
 - Minimum Android: API 21
 - Target Android: API 34

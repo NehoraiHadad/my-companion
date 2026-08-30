@@ -62,6 +62,11 @@ test("a fresh install has no forced name, animal, or completed onboarding", () =
   assert.equal(defaultState.weeklyProgress, 0);
   assert.equal(defaultState.weeklyClaimed, false);
   assert.deepEqual(defaultState.aiRooms, {});
+  assert.deepEqual(defaultState.aiSceneApprovals, {});
+  assert.deepEqual(defaultState.aiStateScenes, {});
+  assert.deepEqual(defaultState.animationAssets, {});
+  assert.equal(defaultState.animationSample, undefined);
+  assert.deepEqual(defaultState.aiUsage, { imageCredits: 0, videoCredits: 0 });
 });
 
 test("a newly created or reset state receives fresh calendar and mess timestamps", () => {

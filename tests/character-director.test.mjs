@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCharacterPrompt, buildOpenRouterCharacterRequest, buildOpenRouterSceneRequest, buildRoomUpgradePrompt, buildSceneCompositePrompt, characterStorageKey, characterVisuals, decorPrompt, decorSetKey, roomStorageKey, sceneStorageKey, stageFlair } from "../src/characterDirector.ts";
+import { buildCharacterPrompt, buildOpenRouterCharacterRequest, buildOpenRouterSceneRequest, buildOpenRouterSleepSceneRequest, buildRoomUpgradePrompt, buildSceneCompositePrompt, buildSleepScenePrompt, characterStorageKey, characterVisuals, decorPrompt, decorSetKey, roomStorageKey, sceneStorageKey, stageFlair, stateSceneStorageKey } from "../src/characterDirector.ts";
 
 test("master prompt creates one transparent canonical game character", () => {
   const prompt = buildCharacterPrompt("baby", "נועה", "master");
@@ -58,6 +58,18 @@ test("scene composition anchors the same identity to a believable room surface",
   assert.equal(request.input_references[1].image_url.url, "identity");
   assert.equal(request.aspect_ratio, "9:16");
   assert.equal(request.background, "opaque");
+});
+
+test("sleep state edits only the approved scene and has an isolated cache key", () => {
+  const prompt = buildSleepScenePrompt("baby", "נועה", "sunrise");
+  assert.match(prompt, /immutable approved full room scene/);
+  assert.match(prompt, /sleeping safely on their back/);
+  assert.match(prompt, /Do not change, move, redraw, or animate any room object/);
+  const request = buildOpenRouterSleepSceneRequest({ model: "openai/gpt-image-2", sceneReference: "scene", identityReference: "master", kind: "baby", name: "נועה", theme: "sunrise" });
+  assert.equal(request.input_references[0].image_url.url, "scene");
+  assert.equal(request.input_references[1].image_url.url, "master");
+  assert.equal(request.background, "opaque");
+  assert.equal(stateSceneStorageKey(7, "sunrise", "sleep", "base"), "v7:scene:sunrise:base:state:sleep");
 });
 
 test("decor set key is stable regardless of purchase order", () => {

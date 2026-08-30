@@ -19,7 +19,8 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline: 3px sol
 .game-page { min-height: 100%; padding-bottom: calc(92px + var(--mobile-safe-area-height,34px)); background: var(--page-bg); }
 .home-screen { position: relative; min-height: 100%; padding: 58px 16px 16px; isolation: isolate; overflow: hidden; }
 .room-background,.room-vignette { position: absolute; inset: 0; z-index: -3; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
-.scene-background-video { object-fit: cover; }
+.scene-background-video { object-fit: cover; animation: sceneVideoIn .32s ease-out; }
+@keyframes sceneVideoIn { from { opacity: .15; } to { opacity: 1; } }
 .room-vignette { z-index: -2; background: linear-gradient(180deg,rgba(4,10,23,.74),rgba(4,10,23,.04) 31%,rgba(4,10,23,.02) 62%,rgba(5,12,27,.78) 86%,#071123); }
 .room-vignette.night { background: linear-gradient(180deg,rgba(3,8,21,.8),rgba(4,8,25,.12) 31%,rgba(5,9,28,.12) 62%,rgba(4,9,22,.85) 87%,#071123); }
 .theme-sunrise .room-vignette { background: linear-gradient(180deg,rgba(68,30,31,.62),transparent 33%,transparent 60%,rgba(53,25,30,.82) 86%,#2a171d); }
@@ -477,15 +478,18 @@ select.text-field { appearance: auto; }
 .character-pipeline span { padding: 6px 3px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.025); }
 .character-pipeline span.done { border-color: rgba(84,217,153,.3); background: rgba(84,217,153,.1); color: #8be8bb; }
 .character-pipeline>svg { width: 11px; height: 11px; margin: auto; }
-.character-variant-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 6px; }
+.character-variant-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .character-variant { min-width: 0; text-align: center; }
-.character-variant>div { position: relative; height: 63px; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background-color: #0b1729; background-position: center; background-size: cover; }
+.character-variant>div { position: relative; height: 124px; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background-color: #0b1729; background-position: center; background-size: cover; }
 .character-variant img { width: 100%; height: 100%; object-fit: contain; background: radial-gradient(circle,rgba(255,255,255,.08),transparent 70%); }
 .character-variant>div>svg { width: 20px; height: 100%; color: var(--muted); }
 .character-variant i { position: absolute; top: 4px; right: 4px; display: grid; width: 17px; height: 17px; place-items: center; border-radius: 50%; background: #54d999; color: #102237; }
 .character-variant i svg { width: 10px; height: 10px; }
 .character-variant strong,.character-variant small { display: block; overflow: hidden; margin-top: 4px; font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
 .character-variant small { margin-top: 1px; color: var(--muted); font-size: 10px; }
+.character-variant>button { width: 100%; min-height: 25px; margin-top: 3px; padding: 0 4px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.05); color: var(--muted); font-size: 9px; font-weight: 850; }
+.character-variant.approved>button { border-color: rgba(84,217,153,.4); background: rgba(84,217,153,.12); color: #72e1ad; }
+.character-variant.approved>div { border-color: rgba(84,217,153,.45); }
 .character-create-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .generation-progress { display: flex; gap: 7px; align-items: center; padding: 9px; border-radius: 12px; background: color-mix(in srgb,var(--accent) 10%,transparent); color: color-mix(in srgb,var(--accent) 60%,white); font-size: 11px; }
 .generation-progress svg { width: 14px; height: 14px; animation: statusPulse 1.2s infinite; }
@@ -612,6 +616,21 @@ html.native-apk .mobile-app-viewport { background: #071123; }
 .moving-character.petted img,.moving-character.petted .default-art { animation: petPop .42s ease; }
 .generation-progress span { min-width: 0; flex: 1; }
 .generation-progress button { min-height: 32px; padding: 0 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.08); color: var(--ink); font-size: 10px; font-weight: 800; }
+.pack-room-status { display: grid; gap: 6px; }
+.pack-room-status>div { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 9px; align-items: center; padding: 7px 9px; border-radius: 11px; background: rgba(255,255,255,.035); }
+.pack-room-status span,.pack-room-status strong { font-size: 10px; }
+.pack-room-status strong { direction: ltr; color: var(--accent); }
+.pack-room-status i { grid-column: 1/-1; height: 4px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.1); }
+.pack-room-status i b { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .3s ease; }
+.motion-grid button.failed { border-color: rgba(255,112,112,.36); }
+.motion-grid button.failed>span { color: #ff8e8e; background: rgba(255,112,112,.12); }
+.motion-preview { width: 100%; max-height: 310px; border: 1px solid var(--line); border-radius: 14px; background: #050b13; object-fit: contain; }
+.sample-approved { display: flex; gap: 8px; align-items: center; padding: 10px 11px; border: 1px solid rgba(84,217,153,.3); border-radius: 13px; background: rgba(84,217,153,.1); color: #72e1ad; font-size: 10px; font-weight: 800; }
+.sample-approved svg { width: 14px; height: 14px; }
+.usage-card { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 3px 10px; padding: 10px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.035); }
+.usage-card span,.usage-card strong { font-size: 11px; }
+.usage-card strong { color: var(--accent); direction: ltr; }
+.usage-card small { grid-column: 1/-1; color: var(--muted); font-size: 9px; line-height: 1.4; }
 .error-card { margin-top: 8px; }
 .error-card>span { min-width: 0; flex: 1; }
 .error-card button { display: grid; width: 24px; height: 24px; margin-inline-start: auto; place-items: center; border: 0; border-radius: 8px; background: rgba(255,255,255,.09); color: inherit; font-size: 13px; line-height: 1; }

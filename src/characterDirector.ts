@@ -138,6 +138,47 @@ export function buildOpenRouterSceneRequest(input: {
 
 export const sceneStorageKey = (visualRevision: number, theme: ThemeId, roomSet = "base") => `v${visualRevision}:scene:${theme}:${roomSet || "base"}`;
 
+export function buildSleepScenePrompt(kind: CharacterKind, name: string, theme: ThemeId) {
+  const safeKind = kind || "person";
+  const sleepPose: Record<Exclude<CharacterKind, "">, string> = {
+    person: "sleeping naturally and comfortably on the same rug, cushion, or bed surface, with a safe anatomically correct resting pose",
+    baby: "sleeping safely on their back on the same soft rug, cushion, or bed surface in an age-appropriate pose",
+    pet: "curled up or lying naturally asleep on the same rug, cushion, or bed surface with the whole body visibly supported",
+  };
+  return [
+    "Use the first image as the immutable approved full room scene and the second image only as the canonical companion identity reference.",
+    "Return the complete portrait room. Keep the exact camera, framing, architecture, furniture, decorations, palette, lighting, floor perspective, and composition.",
+    themeDirection[theme],
+    `Change only ${name || "the companion"} into a persistent sleeping state: ${sleepPose[safeKind]}.`,
+    "Preserve the exact identity, apparent age, face, hair or fur, clothing, colors, markings, body proportions, scale, and room position.",
+    subjectGuardrail[safeKind],
+    "Keep the body physically grounded. Preserve believable occlusion and add only the subtle contact shadow required by the sleeping pose.",
+    "Do not change, move, redraw, or animate any room object. No blanket unless one already exists in the room. No extra subject, limbs, text, logo, UI, frame, or watermark.",
+  ].join(" ");
+}
+
+export function buildOpenRouterSleepSceneRequest(input: {
+  model: string;
+  sceneReference: string;
+  identityReference: string;
+  kind: CharacterKind;
+  name: string;
+  theme: ThemeId;
+}) {
+  return {
+    model: input.model,
+    prompt: buildSleepScenePrompt(input.kind, input.name, input.theme),
+    input_references: [input.sceneReference, input.identityReference].map((url) => ({ type: "image_url", image_url: { url } })),
+    n: 1,
+    aspect_ratio: "9:16",
+    quality: "medium",
+    output_format: "webp",
+    background: "opaque",
+  };
+}
+
+export const stateSceneStorageKey = (visualRevision: number, theme: ThemeId, state: "sleep", roomSet = "base") => `v${visualRevision}:scene:${theme}:${roomSet || "base"}:state:${state}`;
+
 export const decorPrompt: Record<DecorKey, string> = {
   lamp: "a small cozy bedside lamp with a star-patterned shade, glowing softly",
   poster: "a cheerful framed adventure poster hanging on the wall",

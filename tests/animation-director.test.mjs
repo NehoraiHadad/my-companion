@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { animationStorageKey, buildAnimationPrompt, buildAnimationRequest, sceneAnimationStorageKey } from "../src/animationDirector.ts";
+import { animationPackMotions, animationStorageKey, buildAnimationPrompt, buildAnimationRequest, sceneAnimationStorageKey } from "../src/animationDirector.ts";
 
 test("animation prompt preserves the selected subject kind and creates a loop", () => {
   const prompt = buildAnimationPrompt("baby", "נועה", "play");
@@ -40,4 +40,12 @@ test("animation storage keys isolate visual revisions", () => {
   assert.notEqual(animationStorageKey(3, "sleep"), animationStorageKey(4, "sleep"));
   assert.equal(sceneAnimationStorageKey(3, "midnight", "sleep"), "v3:scene:midnight:sleep");
   assert.notEqual(sceneAnimationStorageKey(3, "midnight", "sleep"), sceneAnimationStorageKey(3, "sunrise", "sleep"));
+});
+
+test("the room pack contains every gameplay motion and sleep is a stable persistent loop", () => {
+  assert.deepEqual(animationPackMotions, ["idle", "eat", "play", "sleep", "celebrate"]);
+  const sleep = buildAnimationPrompt("baby", "נועה", "sleep");
+  assert.match(sleep, /already asleep in the reference scene/);
+  assert.match(sleep, /return exactly to the starting sleeping pose/);
+  assert.match(sleep, /Animate only the companion/);
 });
