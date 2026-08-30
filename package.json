@@ -1,7 +1,7 @@
 {
   "name": "pocket-companion-prototype",
   "private": true,
-  "version": "5.6.1",
+  "version": "5.7.0",
   "type": "module",
   "scripts": {
     "check:runtime": "node scripts/check-mobile-runtime.mjs",

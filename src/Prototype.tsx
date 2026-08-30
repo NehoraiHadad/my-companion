@@ -14,7 +14,7 @@ import { defaultCompanionArt } from "./defaultCompanions";
 import {
   buildFalImageTask, buildFalVideoTask, buildKieImageTask, buildKieVideoTask,
   defaultCapabilityModels, estimateVideoCredits, mediaProviderMeta, parseFalAudioUrl, parseFalMediaUrl, parseFalSubmission, parseFalText,
-  parseKieTask, parseKieTaskId, type MediaProvider,
+  parseKieTask, parseKieTaskId, isRetryableStatus, providerConcurrency, retryDelayMilliseconds, runTaskPool, type MediaProvider,
 } from "./mediaProviders";
 import { loadClip, loadMedia, removeClips, removeMedia, saveClip, saveMedia } from "./mediaStore";
 import { Carousel, KeyboardInput, MobileScroll, useKeyboard } from "./mobile";
@@ -369,7 +369,7 @@ export default function Prototype() {
   const [isImporting, setIsImporting] = useState(false);
   const [jobSeconds, setJobSeconds] = useState(0);
   const [isAnimating, setIsAnimating] = useState<CompanionMotion | null>(null);
-  const [packProgress, setPackProgress] = useState<{ done: number; total: number; label: string } | null>(null);
+  const [packProgress, setPackProgress] = useState<{ completed: number; total: number; active: number; failed: number; label: string } | null>(null);
   const [selectedMotion, setSelectedMotion] = useState<CompanionMotion>("idle");
   const [activeMotion, setActiveMotion] = useState<CompanionMotion>("idle");
   const [clipUrls, setClipUrls] = useState<Partial<Record<CompanionMotion, string>>>({});
@@ -727,7 +727,7 @@ export default function Prototype() {
     setIsAnimating(null); setPackProgress(null); setIsDreaming(false); setIsStyling(false); setIsDecorating(false); setCharacterProgress("");
     pushToast("ביטלנו את היצירה. אפשר לנסות שוב מתי שבא לכם.");
   };
-  const jobLabel = packProgress ? `${packProgress.label} · ${packProgress.done + 1} מתוך ${packProgress.total}` : isStyling ? (characterProgress || "יוצרים דמות") : isAnimating ? `יוצרים ${motionMeta[isAnimating].title}` : isDreaming ? "יוצרים חלום" : isDecorating ? "משלבים קישוטים בחדר" : "";
+  const jobLabel = packProgress ? `${packProgress.label} · ${packProgress.completed}/${packProgress.total}${packProgress.active ? ` · ${packProgress.active} במקביל` : ""}${packProgress.failed ? ` · ${packProgress.failed} נכשלו` : ""}` : isStyling ? (characterProgress || "יוצרים דמות") : isAnimating ? `יוצרים ${motionMeta[isAnimating].title}` : isDreaming ? "יוצרים חלום" : isDecorating ? "משלבים קישוטים בחדר" : "";
   const progressRow = (active: boolean) => active
     ? <div className="generation-progress" role="status"><ClockIcon /><span>{jobLabel}… {jobSeconds} שניות</span><button onClick={cancelJob}>ביטול</button></div>
     : null;
@@ -1156,10 +1156,30 @@ export default function Prototype() {
 
   const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, mockAi ? 80 : milliseconds));
 
+  const fetchWithRetry = async (input: RequestInfo | URL, init: RequestInit = {}, maxAttempts = 4) => {
+    const method = init.method || "GET";
+    const token = jobCancelRef.current;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (token.cancelled) throw new Error("בוטל");
+      try {
+        const response = await fetch(input, init);
+        if (!isRetryableStatus(response.status, method) || attempt === maxAttempts - 1) return response;
+        const delay = retryDelayMilliseconds(attempt, response.headers.get("retry-after")) + Math.floor(Math.random() * 250);
+        void response.body?.cancel().catch(() => {});
+        await wait(delay);
+      } catch (error) {
+        if (attempt === maxAttempts - 1 || method.toUpperCase() !== "GET") throw error;
+        await wait(retryDelayMilliseconds(attempt) + Math.floor(Math.random() * 250));
+      }
+    }
+    throw new Error("הבקשה לא הושלמה לאחר מספר ניסיונות");
+  };
+
   const uploadToKie = async (dataUrl: string, index = 0) => {
-    const response = await fetch("https://kieai.redpandaai.co/api/file-base64-upload", {
+    const unique = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const response = await fetchWithRetry("https://kieai.redpandaai.co/api/file-base64-upload", {
       method: "POST", headers: headersFor("kie"),
-      body: JSON.stringify({ base64Data: dataUrl, uploadPath: "images/companion", fileName: `companion-${Date.now()}-${index}.webp` }),
+      body: JSON.stringify({ base64Data: dataUrl, uploadPath: "images/companion", fileName: `companion-${unique}-${index}.webp` }),
     });
     if (!response.ok) throw new Error(`העלאת תמונה ל־KIE נכשלה (${response.status})`);
     const data = await response.json();
@@ -1170,13 +1190,13 @@ export default function Prototype() {
 
   const runKieTask = async (body: unknown) => {
     const token = jobCancelRef.current;
-    const response = await fetch("https://api.kie.ai/api/v1/jobs/createTask", { method: "POST", headers: headersFor("kie"), body: JSON.stringify(body) });
+    const response = await fetchWithRetry("https://api.kie.ai/api/v1/jobs/createTask", { method: "POST", headers: headersFor("kie"), body: JSON.stringify(body) });
     if (!response.ok) throw new Error(`יצירת משימת KIE נכשלה (${response.status})`);
     const taskId = parseKieTaskId(await response.json());
     for (let attempt = 0; attempt < 75; attempt += 1) {
       await wait(Math.min(12_000, 2_500 + attempt * 350));
       if (token.cancelled) throw new Error("בוטל");
-      const poll = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, { headers: headersFor("kie", false) });
+      const poll = await fetchWithRetry(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, { headers: headersFor("kie", false) });
       if (!poll.ok) throw new Error(`בדיקת משימת KIE נכשלה (${poll.status})`);
       const task = parseKieTask(await poll.json());
       if (task.state === "success") {
@@ -1190,7 +1210,7 @@ export default function Prototype() {
 
   const readKieCredits = async () => {
     if (mockAi) return 0;
-    const response = await fetch("https://api.kie.ai/api/v1/chat/credit", { headers: headersFor("kie", false) });
+    const response = await fetchWithRetry("https://api.kie.ai/api/v1/chat/credit", { headers: headersFor("kie", false) });
     if (!response.ok) return null;
     const payload = await readJson(response);
     const credits = Number(payload?.data);
@@ -1199,20 +1219,20 @@ export default function Prototype() {
 
   const runFalRawTask = async (model: string, body: unknown) => {
     const token = jobCancelRef.current;
-    const response = await fetch(`https://queue.fal.run/${model.replace(/^\/+/, "")}`, { method: "POST", headers: headersFor("fal"), body: JSON.stringify(body) });
+    const response = await fetchWithRetry(`https://queue.fal.run/${model.replace(/^\/+/, "")}`, { method: "POST", headers: headersFor("fal"), body: JSON.stringify(body) });
     if (!response.ok) throw new Error(`יצירת משימת fal.ai נכשלה (${response.status})`);
     const submission = parseFalSubmission(await response.json());
     for (let attempt = 0; attempt < 90; attempt += 1) {
       await wait(Math.min(10_000, 2_000 + attempt * 250));
       if (token.cancelled) throw new Error("בוטל");
-      const statusResponse = await fetch(submission.statusUrl, { headers: headersFor("fal", false) });
+      const statusResponse = await fetchWithRetry(submission.statusUrl, { headers: headersFor("fal", false) });
       if (!statusResponse.ok) throw new Error(`בדיקת משימת fal.ai נכשלה (${statusResponse.status})`);
       const status = await statusResponse.json();
       const state = String(status.status ?? "");
       const failure = () => (typeof status.error === "string" ? status.error : status.error?.message) || `משימת fal.ai נכשלה${state ? ` (${state})` : ""}`;
       if (state === "COMPLETED") {
         if (status.error) throw new Error(failure());
-        const resultResponse = await fetch(submission.responseUrl, { headers: headersFor("fal", false) });
+        const resultResponse = await fetchWithRetry(submission.responseUrl, { headers: headersFor("fal", false) });
         if (!resultResponse.ok) throw new Error(`קבלת תוצאת fal.ai נכשלה (${resultResponse.status})`);
         return resultResponse.json();
       }
@@ -1224,21 +1244,22 @@ export default function Prototype() {
   const runFalTask = async (model: string, body: unknown) => parseFalMediaUrl(await runFalRawTask(model, body));
 
   const downloadMedia = async (url: string) => {
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url);
     if (!response.ok) throw new Error(`הורדת המדיה נכשלה (${response.status})`);
     return response.blob();
   };
 
-  const requestStyledImage = async (references: string[], prompt: string, opts: { transparent?: boolean; aspectRatio?: "1:1" | "9:16"; openRouterBody?: unknown } = {}) => {
+  const requestStyledImage = async (references: string[], prompt: string, opts: { transparent?: boolean; aspectRatio?: "1:1" | "9:16"; openRouterBody?: unknown; measureCredits?: boolean } = {}) => {
     const transparent = opts.transparent ?? true;
     const aspectRatio = opts.aspectRatio ?? "1:1";
+    const measureCredits = opts.measureCredits ?? true;
     if (mockAi) return fetch(references[0]).then((result) => result.blob());
     let response: Response;
     if (ai.imageProvider === "kie") {
-      const before = await readKieCredits();
+      const before = measureCredits ? await readKieCredits() : null;
       const uploaded = await Promise.all(references.map((reference, index) => uploadToKie(reference, index)));
       const image = await downloadMedia(await runKieTask(buildKieImageTask(ai.imageModel, prompt, uploaded, aspectRatio === "9:16" ? "auto" : aspectRatio)));
-      const after = await readKieCredits();
+      const after = measureCredits ? await readKieCredits() : null;
       const credits = before !== null && after !== null ? Math.max(0, Math.round((before - after) * 100) / 100) : 0;
       if (credits) setGame((current) => ({ ...current, aiUsage: { ...current.aiUsage, imageCredits: current.aiUsage.imageCredits + credits } }));
       return image;
@@ -1256,10 +1277,10 @@ export default function Prototype() {
       form.append("prompt", prompt);
       form.append("size", aspectRatio === "9:16" ? "1024x1536" : "1024x1024"); form.append("quality", "medium"); form.append("output_format", "webp");
       if (transparent) form.append("background", "transparent");
-      response = await fetch(`${mediaBase()}/images/edits`, { method: "POST", headers: mediaHeaders(false), body: form });
+      response = await fetchWithRetry(`${mediaBase()}/images/edits`, { method: "POST", headers: mediaHeaders(false), body: form });
     } else {
       const body = opts.openRouterBody ?? { model: ai.imageModel, prompt, input_references: references.map((url) => ({ type: "image_url", image_url: { url } })), n: 1, aspect_ratio: aspectRatio, quality: "medium", output_format: "webp" };
-      response = await fetch(`${mediaBase()}/images`, { method: "POST", headers: mediaHeaders(), body: JSON.stringify(body) });
+      response = await fetchWithRetry(`${mediaBase()}/images`, { method: "POST", headers: mediaHeaders(), body: JSON.stringify(body) });
     }
     if (!response.ok) {
       const detail = await response.text();
@@ -1271,46 +1292,51 @@ export default function Prototype() {
     throw new Error("המודל לא החזיר תמונה");
   };
 
-  const requestCharacterImage = (references: string[], visual: CharacterVisual) => requestStyledImage(
+  const requestCharacterImage = (references: string[], visual: CharacterVisual, measureCredits = true) => requestStyledImage(
     references,
     buildCharacterPrompt(game.characterKind, game.name, visual, stage),
-    { openRouterBody: buildOpenRouterCharacterRequest({ model: ai.imageModel, references, kind: game.characterKind, name: game.name, visual, stage }) },
+    { openRouterBody: buildOpenRouterCharacterRequest({ model: ai.imageModel, references, kind: game.characterKind, name: game.name, visual, stage }), measureCredits },
   );
 
-  const requestSceneImage = (roomReference: string, identityReference: string, theme: ThemeId) => requestStyledImage(
+  const requestSceneImage = (roomReference: string, identityReference: string, theme: ThemeId, measureCredits = true) => requestStyledImage(
     [roomReference, identityReference],
     buildSceneCompositePrompt(game.characterKind, game.name, theme, stage),
     {
       transparent: false,
       aspectRatio: "9:16",
+      measureCredits,
       openRouterBody: buildOpenRouterSceneRequest({ model: ai.imageModel, roomReference, identityReference, kind: game.characterKind, name: game.name, theme, stage }),
     },
   );
 
-  const requestSleepSceneImage = (sceneReference: string, identityReference: string, theme: ThemeId) => requestStyledImage(
+  const requestSleepSceneImage = (sceneReference: string, identityReference: string, theme: ThemeId, measureCredits = true) => requestStyledImage(
     [sceneReference, identityReference],
     buildSleepScenePrompt(game.characterKind, game.name, theme),
     {
       transparent: false,
       aspectRatio: "9:16",
+      measureCredits,
       openRouterBody: buildOpenRouterSleepSceneRequest({ model: ai.imageModel, sceneReference, identityReference, kind: game.characterKind, name: game.name, theme }),
     },
   );
 
   const stylizePhoto = async (fullSet = false) => {
     const revision = game.visualRevision;
+    const token = jobCancelRef.current;
+    let batchCreditsBefore: number | null = null;
     const sourcePhoto = game.sourcePhoto || game.photo;
     if (!sourcePhoto) { raiseAiError("character", "קודם צריך לבחור תמונה."); return; }
     if (!ai.imageConsent) { raiseAiError("character", "צריך לאשר במפורש את שליחת התמונה לספק ה־AI."); return; }
     if (mediaStatus !== "ready") { raiseAiError("character", "צריך להפעיל קודם את ספק התמונה."); return; }
     if (!imageModels.length) { raiseAiError("character", "החיבור תקין, אבל אין כרגע מודל תמונה תואם בחשבון או אצל הספק שנבחר."); return; }
+    if (fullSet && ai.imageProvider === "kie") batchCreditsBefore = await readKieCredits().catch(() => null);
     setIsStyling(true); clearAiError();
     try {
       let master: Blob | null = null;
       if (fullSet && game.aiCharacter) master = await loadMedia(characterStorageKey(revision, "master"));
       if (!master) {
         setCharacterProgress(fullSet ? "1 מתוך 4 · יוצרים דמות מאסטר" : "יוצרים דמות מאסטר");
-        master = await requestCharacterImage([sourcePhoto], "master");
+        master = await requestCharacterImage([sourcePhoto], "master", !fullSet);
         const masterKey = characterStorageKey(revision, "master");
         await saveMedia(masterKey, master);
         if (revisionRef.current !== revision) { void removeMedia([masterKey]).catch(() => {}); return; }
@@ -1327,11 +1353,11 @@ export default function Prototype() {
       if (fullSet) {
         const identityReference = await blobToDataUrl(master);
         const variants: ThemeId[] = ["sunrise", "midnight", "classic"];
-        for (let index = 0; index < variants.length; index += 1) {
-          const theme = variants[index];
-          setCharacterProgress(`${index + 2} מתוך 4 · משלבים בחדר ${themes.find((item) => item.id === theme)?.title}`);
+        setCharacterProgress(`0 מתוך 3 חדרים · מתחילים עד ${providerConcurrency[ai.imageProvider].image} במקביל`);
+        const results = await runTaskPool(variants, providerConcurrency[ai.imageProvider].image, async (theme) => {
+          if (token.cancelled) throw new Error("בוטל");
           const roomReference = await urlToDataUrl(roomUrls[theme] ?? themes.find((item) => item.id === theme)!.image);
-          const scene = await requestSceneImage(roomReference, identityReference, theme);
+          const scene = await requestSceneImage(roomReference, identityReference, theme, false);
           const roomSet = game.aiRooms[theme] ?? "base";
           const sceneKey = sceneStorageKey(revision, theme, roomSet);
           await saveMedia(sceneKey, scene);
@@ -1340,12 +1366,26 @@ export default function Prototype() {
           if (staleClipKeys.length) void removeClips(staleClipKeys).catch(() => {});
           if (theme === game.theme) setClipUrls({});
           setGame((current) => current.visualRevision !== revision ? current : ({ ...current, aiCharacter: true, aiScenes: { ...current.aiScenes, [theme]: roomSet }, aiSceneApprovals: { ...current.aiSceneApprovals, [theme]: false }, aiStateScenes: { ...current.aiStateScenes, [theme]: {} }, sceneAnimationSlots: { ...current.sceneAnimationSlots, [theme]: {} }, animationAssets: { ...current.animationAssets, [theme]: {} }, animationSample: undefined }));
-        }
+          return theme;
+        }, {
+          shouldStop: () => token.cancelled,
+          onProgress: ({ completed, total, active, failed }) => setCharacterProgress(`${completed} מתוך ${total} חדרים${active ? ` · ${active} נוצרים במקביל` : ""}${failed ? ` · ${failed} נכשלו` : ""}`),
+        });
+        if (token.cancelled) throw new Error("בוטל");
+        const failures = results.filter((result) => result?.status === "rejected").length;
+        if (failures) throw new Error(`${variants.length - failures} חדרים נשמרו, ו־${failures} נכשלו. אפשר להפעיל שוב כדי לנסות להשלים.`);
         say("שלושה חדרים, אותה זהות — והפעם אף אחד לא מרחף מעל השטיח.");
       } else say("זאת דמות המאסטר. אותה זהות, הרבה פחות תמונת פספורט.");
       showEffect("heart");
     } catch (error) { raiseAiError("character", error instanceof Error ? error.message : "יצירת הדמות נכשלה"); }
-    finally { setIsStyling(false); setCharacterProgress(""); }
+    finally {
+      if (batchCreditsBefore !== null) {
+        const after = await readKieCredits().catch(() => null);
+        const credits = after === null ? 0 : Math.max(0, Math.round((batchCreditsBefore - after) * 100) / 100);
+        if (credits) setGame((current) => ({ ...current, aiUsage: { ...current.aiUsage, imageCredits: current.aiUsage.imageCredits + credits } }));
+      }
+      setIsStyling(false); setCharacterProgress("");
+    }
   };
 
   const generateRoomUpgrade = async () => {
@@ -1379,31 +1419,31 @@ export default function Prototype() {
     finally { setIsDecorating(false); }
   };
 
-  const requestVideo = async (referenceDataUrl: string, prompt: string, duration = 5): Promise<GeneratedVideo | null> => {
+  const requestVideo = async (referenceDataUrl: string, prompt: string, duration = 5, measureCredits = true): Promise<GeneratedVideo | null> => {
     if (mockAi) return null;
     const token = jobCancelRef.current;
     if (ai.videoProvider === "kie") {
-      const before = await readKieCredits();
+      const before = measureCredits ? await readKieCredits() : null;
       const frameUrl = await uploadToKie(referenceDataUrl);
       const blob = await downloadMedia(await runKieTask(buildKieVideoTask(ai.videoModel, prompt, frameUrl, duration)));
-      const after = await readKieCredits();
+      const after = measureCredits ? await readKieCredits() : null;
       const credits = before !== null && after !== null ? Math.max(0, Math.round((before - after) * 100) / 100) : undefined;
       return { blob, credits };
     }
     if (ai.videoProvider === "fal") return { blob: await downloadMedia(await runFalTask(ai.videoModel, buildFalVideoTask(prompt, referenceDataUrl))) };
     if (ai.videoProvider === "openai") {
-      const create = await fetch("https://api.openai.com/v1/videos", { method: "POST", headers: headersFor("openai"), body: JSON.stringify({ model: ai.videoModel, prompt, input_reference: { image_url: referenceDataUrl }, seconds: duration <= 4 ? 4 : 8, size: "720x1280" }) });
+      const create = await fetchWithRetry("https://api.openai.com/v1/videos", { method: "POST", headers: headersFor("openai"), body: JSON.stringify({ model: ai.videoModel, prompt, input_reference: { image_url: referenceDataUrl }, seconds: duration <= 4 ? 4 : 8, size: "720x1280" }) });
       if (!create.ok) throw new Error(`יצירת וידאו ב־OpenAI נכשלה (${create.status})`);
       let job = await create.json();
       for (let attempt = 0; attempt < 60 && !["completed", "failed"].includes(job.status); attempt += 1) {
         await wait(7_000);
         if (token.cancelled) throw new Error("בוטל");
-        const poll = await fetch(`https://api.openai.com/v1/videos/${job.id}`, { headers: headersFor("openai", false) });
+        const poll = await fetchWithRetry(`https://api.openai.com/v1/videos/${job.id}`, { headers: headersFor("openai", false) });
         if (!poll.ok) throw new Error(`בדיקת וידאו ב־OpenAI נכשלה (${poll.status})`);
         job = await poll.json();
       }
       if (job.status !== "completed") throw new Error(job.error?.message || "וידאו OpenAI לא הושלם בזמן");
-      const content = await fetch(`https://api.openai.com/v1/videos/${job.id}/content`, { headers: headersFor("openai", false) });
+      const content = await fetchWithRetry(`https://api.openai.com/v1/videos/${job.id}/content`, { headers: headersFor("openai", false) });
       if (!content.ok) throw new Error(`הורדת וידאו OpenAI נכשלה (${content.status})`);
       return { blob: await content.blob() };
     }
@@ -1414,32 +1454,32 @@ export default function Prototype() {
     if (videoCapabilities?.supported_frame_images?.includes("last_frame")) frameImages.push({ type: "image_url", image_url: { url: referenceDataUrl }, frame_type: "last_frame" });
     const request = { model: ai.videoModel, prompt, duration, aspect_ratio: "9:16", resolution, generate_audio: false, frame_images: frameImages };
     const videoBase = "https://openrouter.ai/api/v1";
-    const response = await fetch(`${videoBase}/videos`, { method: "POST", headers: headersFor("openrouter"), body: JSON.stringify(request) });
+    const response = await fetchWithRetry(`${videoBase}/videos`, { method: "POST", headers: headersFor("openrouter"), body: JSON.stringify(request) });
     if (!response.ok) throw new Error(`יצירת הווידאו נכשלה (${response.status}) ${(await response.text()).slice(0, 100)}`);
     let job = await response.json();
     for (let attempt = 0; attempt < 60 && !["completed", "failed", "cancelled", "expired"].includes(job.status); attempt += 1) {
       await wait(7_000);
       if (token.cancelled) throw new Error("בוטל");
       const pollUrl = job.polling_url?.startsWith("http") ? job.polling_url : `${videoBase}/videos/${job.id}`;
-      const poll = await fetch(pollUrl, { headers: headersFor("openrouter", false) });
+      const poll = await fetchWithRetry(pollUrl, { headers: headersFor("openrouter", false) });
       if (!poll.ok) throw new Error(`בדיקת הווידאו נכשלה (${poll.status})`);
       job = await poll.json();
     }
     if (job.status !== "completed") throw new Error(job.error?.message ?? (typeof job.error === "string" ? job.error : "יצירת הווידאו לא הושלמה בזמן"));
     const contentUrl = job.unsigned_urls?.[0] || job.content_url || job.video_url || `${videoBase}/videos/${job.id}/content`;
-    const content = await fetch(contentUrl, contentUrl.startsWith(videoBase) ? { headers: headersFor("openrouter", false) } : undefined);
+    const content = await fetchWithRetry(contentUrl, contentUrl.startsWith(videoBase) ? { headers: headersFor("openrouter", false) } : undefined);
     if (!content.ok) throw new Error(`הורדת הווידאו נכשלה (${content.status})`);
     return { blob: await content.blob() };
   };
 
-  const updateAnimationRecord = (theme: ThemeId, motionId: CompanionMotion, record: AnimationAssetRecord) => {
-    setGame((current) => current.visualRevision !== game.visualRevision ? current : ({
+  const updateAnimationRecord = (theme: ThemeId, motionId: CompanionMotion, revision: number, record: AnimationAssetRecord) => {
+    setGame((current) => current.visualRevision !== revision ? current : ({
       ...current,
       animationAssets: { ...current.animationAssets, [theme]: { ...current.animationAssets[theme], [motionId]: record } },
     }));
   };
 
-  const ensureSleepScene = async (theme: ThemeId, revision: number) => {
+  const ensureSleepScene = async (theme: ThemeId, revision: number, measureCredits = true) => {
     const roomSet = game.aiScenes[theme];
     if (!roomSet) throw new Error(`חסרה סצנה מאושרת לחדר ${themes.find((item) => item.id === theme)?.title}`);
     const existingSet = game.aiStateScenes[theme]?.sleep;
@@ -1452,7 +1492,7 @@ export default function Prototype() {
       loadMedia(characterStorageKey(revision, "master")),
     ]);
     if (!scene || !master) throw new Error("חסרה תמונת סצנה או דמות מאסטר ליצירת מצב שינה");
-    const sleepScene = await requestSleepSceneImage(await blobToDataUrl(scene), await blobToDataUrl(master), theme);
+    const sleepScene = await requestSleepSceneImage(await blobToDataUrl(scene), await blobToDataUrl(master), theme, measureCredits);
     const key = stateSceneStorageKey(revision, theme, "sleep", roomSet);
     await saveMedia(key, sleepScene);
     if (revisionRef.current !== revision) { void removeMedia([key]).catch(() => {}); throw new Error("בוטל"); }
@@ -1464,20 +1504,20 @@ export default function Prototype() {
     return sleepScene;
   };
 
-  const createSceneAnimation = async (theme: ThemeId, companionMotion: CompanionMotion, revision: number) => {
+  const createSceneAnimation = async (theme: ThemeId, companionMotion: CompanionMotion, revision: number, options: { measureVideoCredits?: boolean; sleepScene?: Blob } = {}) => {
     const roomSet = game.aiScenes[theme];
     if (!roomSet || !game.aiSceneApprovals[theme]) throw new Error(`צריך לאשר קודם את חדר ${themes.find((item) => item.id === theme)?.title}`);
     const baseScene = companionMotion === "sleep"
-      ? await ensureSleepScene(theme, revision)
+      ? options.sleepScene ?? await ensureSleepScene(theme, revision)
       : await loadMedia(sceneStorageKey(revision, theme, roomSet));
     if (!baseScene) throw new Error(`תמונת חדר ${themes.find((item) => item.id === theme)?.title} לא נמצאה במכשיר`);
     const recordBase = { provider: ai.videoProvider, model: ai.videoModel };
-    updateAnimationRecord(theme, companionMotion, { ...recordBase, status: "generating" });
+    updateAnimationRecord(theme, companionMotion, revision, { ...recordBase, status: "generating" });
     try {
       const referenceDataUrl = await blobToDataUrl(baseScene);
       const capabilities = videoModels.find((model) => model.id === ai.videoModel);
       const request = buildAnimationRequest({ model: ai.videoModel, photoDataUrl: referenceDataUrl, kind: game.characterKind, name: game.name, motion: companionMotion, supportedResolutions: capabilities?.supported_resolutions, supportedFrameImages: capabilities?.supported_frame_images });
-      const generated = await requestVideo(referenceDataUrl, request.prompt, motionMeta[companionMotion].duration);
+      const generated = await requestVideo(referenceDataUrl, request.prompt, motionMeta[companionMotion].duration, options.measureVideoCredits ?? true);
       const clipKey = sceneAnimationStorageKey(revision, theme, companionMotion);
       if (generated) {
         await saveClip(clipKey, generated.blob);
@@ -1498,7 +1538,7 @@ export default function Prototype() {
       return readyRecord;
     } catch (error) {
       const message = error instanceof Error ? error.message : "יצירת האנימציה נכשלה";
-      updateAnimationRecord(theme, companionMotion, { ...recordBase, status: "failed", error: message });
+      updateAnimationRecord(theme, companionMotion, revision, { ...recordBase, status: "failed", error: message });
       throw error;
     }
   };
@@ -1530,16 +1570,59 @@ export default function Prototype() {
     const pending = themes.flatMap((theme) => animationPackMotions.filter((motion) => !game.sceneAnimationSlots[theme.id]?.[motion]).map((motion) => ({ theme: theme.id, motion })));
     if (!pending.length) { say("כל חבילת האנימציות כבר מוכנה."); return; }
     const token = jobCancelRef.current;
-    setPackProgress({ done: 0, total: pending.length, label: "מכינים חבילת אנימציות" }); clearAiError();
+    const videoConcurrency = providerConcurrency[ai.videoProvider].video;
+    const preparedSleepScenes = new Map<ThemeId, Blob>();
+    const sleepThemes = themes.map((theme) => theme.id).filter((theme) => pending.some((item) => item.theme === theme && item.motion === "sleep"));
+    if (sleepThemes.length && (mediaStatus !== "ready" || !imageModels.length)) { raiseAiError("motion", "להשלמת מצב השינה צריך להפעיל גם ספק תמונה."); return; }
+    setIsAnimating("idle");
+    setPackProgress({ completed: 0, total: pending.length, active: 0, failed: 0, label: "מכינים חבילת אנימציות" }); clearAiError();
     try {
-      for (let index = 0; index < pending.length; index += 1) {
-        if (token.cancelled) throw new Error("בוטל");
-        const item = pending[index];
-        setIsAnimating(item.motion);
-        setPackProgress({ done: index, total: pending.length, label: `${themes.find((theme) => theme.id === item.theme)?.title} · ${motionMeta[item.motion].title}` });
-        await createSceneAnimation(item.theme, item.motion, revision);
+      if (sleepThemes.length) {
+        const imageCreditsBefore = ai.imageProvider === "kie" ? await readKieCredits().catch(() => null) : null;
+        try {
+          await runTaskPool(sleepThemes, providerConcurrency[ai.imageProvider].image, async (theme) => {
+            const scene = await ensureSleepScene(theme, revision, ai.imageProvider !== "kie");
+            preparedSleepScenes.set(theme, scene);
+            return theme;
+          }, {
+            shouldStop: () => token.cancelled,
+            onProgress: ({ completed, total, active, failed }) => setPackProgress({ completed, total, active, failed, label: "מכינים תמונות שינה" }),
+          });
+        } finally {
+          if (imageCreditsBefore !== null) {
+            const after = await readKieCredits().catch(() => null);
+            const credits = after === null ? 0 : Math.max(0, Math.round((imageCreditsBefore - after) * 100) / 100);
+            if (credits) setGame((current) => ({ ...current, aiUsage: { ...current.aiUsage, imageCredits: current.aiUsage.imageCredits + credits } }));
+          }
+        }
       }
-      say("שלושה חדרים וחבילת תנועות מלאה מוכנים במכשיר."); showEffect("heart");
+      if (token.cancelled) throw new Error("בוטל");
+      const videoCreditsBefore = ai.videoProvider === "kie" ? await readKieCredits().catch(() => null) : null;
+      let results: Array<PromiseSettledResult<AnimationAssetRecord>> = [];
+      try {
+        results = await runTaskPool(pending, videoConcurrency, async (item) => {
+          if (item.motion === "sleep" && !preparedSleepScenes.has(item.theme)) {
+            const message = `הכנת תמונת השינה בחדר ${themes.find((theme) => theme.id === item.theme)?.title} נכשלה`;
+            updateAnimationRecord(item.theme, item.motion, revision, { provider: ai.videoProvider, model: ai.videoModel, status: "failed", error: message });
+            throw new Error(message);
+          }
+          return createSceneAnimation(item.theme, item.motion, revision, { measureVideoCredits: ai.videoProvider !== "kie", sleepScene: preparedSleepScenes.get(item.theme) });
+        }, {
+          shouldStop: () => token.cancelled,
+          onProgress: ({ completed, total, active, failed }) => setPackProgress({ completed, total, active, failed, label: `יוצרים סרטונים · עד ${videoConcurrency} במקביל` }),
+        });
+      } finally {
+        if (videoCreditsBefore !== null) {
+          const after = await readKieCredits().catch(() => null);
+          const credits = after === null ? 0 : Math.max(0, Math.round((videoCreditsBefore - after) * 100) / 100);
+          if (credits) setGame((current) => ({ ...current, aiUsage: { ...current.aiUsage, videoCredits: current.aiUsage.videoCredits + credits } }));
+        }
+      }
+      if (token.cancelled) throw new Error("בוטל");
+      const failures = results.filter((result) => result?.status === "rejected").length;
+      const completed = results.filter((result) => result?.status === "fulfilled").length;
+      if (failures) raiseAiError("motion", `${completed} סרטונים נשמרו, ו־${failures} נכשלו. הפעלה נוספת תנסה רק את החסרים.`);
+      else { say("שלושה חדרים וחבילת תנועות מלאה מוכנים במכשיר."); showEffect("heart"); }
     } catch (error) { raiseAiError("motion", error instanceof Error ? error.message : "יצירת החבילה נעצרה"); }
     finally { setIsAnimating(null); setPackProgress(null); }
   };
@@ -1674,10 +1757,10 @@ export default function Prototype() {
             })}
           </div>
           {progressRow(isStyling)}
-          <div className="small-note">מאסטר: בקשת תמונה אחת. ערכה מלאה: {game.aiCharacter ? "3" : "4"} בקשות בתשלום. כל סצנה נוצרת כתמונה מלאה כדי להתאים תנוחה, קנה מידה, אור וצל למשטח בחדר.</div>
+          <div className="small-note">מאסטר: בקשת תמונה אחת. ערכה מלאה: {game.aiCharacter ? "3" : "4"} בקשות בתשלום. אחרי המאסטר, חדרי הסצנה נוצרים עד {providerConcurrency[ai.imageProvider].image} במקביל ונשמרים אחד־אחד.</div>
           <div className="small-note">הדמות נוצרת עם האנרגיה של השלב הנוכחי ({stageMeta[stage].title}) — אחרי אבולוציה אפשר לרענן.</div>
           <button className="wide-button" disabled={Boolean(characterBlock) || isStyling} onClick={() => void stylizePhoto(false)}><FaceIcon />{isStyling ? "יוצרים…" : game.aiCharacter ? "יצירת מאסטר מחדש" : "יצירת דמות מאסטר"}</button>
-          <ConfirmAction className="wide-button accent" icon={<MagicWandIcon />} label={isStyling ? "מכינים ערכה…" : "התאמה לכל החדרים"} question={`${game.aiCharacter ? "3" : "4"} בקשות בתשלום. להמשיך?`} confirmLabel="ליצור" disabled={Boolean(characterBlock) || isStyling} onConfirm={() => void stylizePhoto(true)} />
+          <ConfirmAction className="wide-button accent" icon={<MagicWandIcon />} label={isStyling ? "מכינים ערכה…" : "התאמה לכל החדרים"} question={`${game.aiCharacter ? "3" : "4"} בקשות בתשלום. אחרי יצירת המאסטר, עד ${providerConcurrency[ai.imageProvider].image} חדרים ייווצרו במקביל. להמשיך?`} confirmLabel="ליצור" disabled={Boolean(characterBlock) || isStyling} onConfirm={() => void stylizePhoto(true)} />
           {characterBlock ? <div className="blocked-note">{characterBlock}</div> : null}
           {aiErrorFor("character")}
           <label className="consent-row"><input type="checkbox" checked={ai.imageConsent} onChange={(event) => setAi((current) => ({ ...current, imageConsent: event.target.checked }))} /><span>אישור שליחת התמונה לספק התמונה ({mediaProviderMeta[ai.imageProvider].title}) או לספק הווידאו ({mediaProviderMeta[ai.videoProvider].title}) רק בזמן יצירה.</span></label></article>
@@ -1695,12 +1778,12 @@ export default function Prototype() {
             {clipUrls[selectedMotion] ? <video className="motion-preview" controls muted playsInline loop={selectedMotion === "idle" || selectedMotion === "sleep"} src={clipUrls[selectedMotion]} /> : null}
             {progressRow(Boolean(isAnimating) || Boolean(packProgress))}
             {!game.animationSample ? <button className="wide-button accent" disabled={Boolean(motionBlock) || !!isAnimating || !allScenesApproved} onClick={() => void generateCharacterAnimation(selectedMotion, true)}><PlayIcon />יצירת סרטון ניסיון · {motionMeta[selectedMotion].title}</button> : !game.animationSample.approved ? <button className="wide-button accent" disabled={!clipUrls[game.animationSample.motion] && !mockAi} onClick={() => setGame((current) => ({ ...current, animationSample: current.animationSample ? { ...current.animationSample, approved: true } : undefined }))}><CheckIcon />אישור סרטון הניסיון</button> : <div className="sample-approved"><CheckIcon /><span>סרטון הניסיון אושר · אפשר להשלים את החבילה</span></div>}
-            {game.animationSample?.approved ? <ConfirmAction className="wide-button accent" icon={<StackIcon />} label={remainingAnimationCount ? `יצירת יתר החבילה · ${remainingAnimationCount} סרטונים` : "כל החבילה מוכנה"} question={`${remainingAnimationCount} סרטונים${estimatedRemainingCredits === null ? "" : ` · אומדן ${estimatedRemainingCredits} קרדיטים`}. היצירה מתבצעת ברצף וניתנת לביטול.`} confirmLabel="להתחיל" disabled={!remainingAnimationCount || !!isAnimating || Boolean(motionBlock)} onConfirm={() => void generateAnimationPack()} /> : null}
+            {game.animationSample?.approved ? <ConfirmAction className="wide-button accent" icon={<StackIcon />} label={remainingAnimationCount ? `יצירת יתר החבילה · ${remainingAnimationCount} סרטונים` : "כל החבילה מוכנה"} question={`${remainingAnimationCount} סרטונים${estimatedRemainingCredits === null ? "" : ` · אומדן ${estimatedRemainingCredits} קרדיטים`}. עד ${Math.min(remainingAnimationCount, providerConcurrency[ai.videoProvider].video)} ייווצרו במקביל; הצלחות נשמרות גם אם פריט אחר נכשל.`} confirmLabel="להתחיל" disabled={!remainingAnimationCount || !!isAnimating || Boolean(motionBlock)} onConfirm={() => void generateAnimationPack()} /> : null}
             {game.animationSample?.approved ? <button className="wide-button" disabled={Boolean(motionBlock) || !!isAnimating} onClick={() => void generateCharacterAnimation(selectedMotion)}><PlayIcon />{game.sceneAnimationSlots[game.theme]?.[selectedMotion] ? `יצירה מחדש: ${motionMeta[selectedMotion].title}` : `יצירת ${motionMeta[selectedMotion].title} בחדר הזה`}</button> : null}
             {!allScenesApproved ? <div className="blocked-note">צריך לבדוק ולאשר את כל שלוש תמונות החדרים לפני חיוב על וידאו ({approvedSceneCount}/3 אושרו).</div> : motionBlock ? <div className="blocked-note">{motionBlock}</div> : null}
             {aiErrorFor("motion")}
             <div className="usage-card"><span>נכסים מוכנים</span><strong>{readyAnimationCount}/{totalAnimationCount}</strong><small>{game.aiUsage.imageCredits || game.aiUsage.videoCredits ? `נמדדו ב־KIE: תמונות ${game.aiUsage.imageCredits.toFixed(2)} · וידאו ${game.aiUsage.videoCredits.toFixed(2)} קרדיטים` : estimatedClipCredits === null ? "הספק לא חושף אומדן קרדיטים אחיד" : `אומדן לסרטון: ${estimatedClipCredits} קרדיטים`}</small></div>
-            <div className="small-note">כל פעולה היא וידאו מלא של החדר ב־720p לכל היותר. בשינה נוצרת קודם תמונת שינה קבועה, וממנה לולאת נשימה. אין הסרת רקע ואין שכבת דמות מרחפת.</div>
+            <div className="small-note">כל פעולה היא וידאו מלא של החדר ב־720p לכל היותר. תמונות השינה מוכנות תחילה במקביל, ואז הסרטונים רצים בתור מוגבל לפי הספק. עומס זמני מאט ומנסה שוב אוטומטית.</div>
           </> : null}</article>
           {mediaHasVideo ? <article className="ai-feature-card compact-feature"><div className="ai-section-title"><MoonIcon /><div><strong>חלום וידאו</strong><span>קטע חגיגי לצפייה, בנפרד מלולאות הטיפול.</span></div></div>{progressRow(isDreaming)}<button className="wide-button" disabled={Boolean(dreamBlock) || isDreaming} onClick={() => void generateDream()}><MoonIcon />{isDreaming ? "יוצרים חלום…" : "יצירת חלום"}</button>{dreamBlock ? <div className="blocked-note">{dreamBlock}</div> : null}{aiErrorFor("dream")}{videoUrl ? <video className="dream-video" controls playsInline src={videoUrl} /> : null}</article> : null}
           <details className="advanced-ai"><summary>מודלים והגדרות מתקדמות</summary><div><label>מודל שפה · {mediaProviderMeta[ai.provider as MediaProvider].title}</label><KeyboardInput id="text-model" className="text-field ltr" value={ai.textModel} onChange={(event) => setAi((current) => ({ ...current, textModel: event.target.value }))} /><label>מודל קול · {mediaProviderMeta[ai.voiceProvider].title}</label>{voiceModels.length > 1 ? <select aria-label="מודל קול" className="text-field ltr" value={ai.voiceModel} onChange={(event) => setAi((current) => ({ ...current, voiceModel: event.target.value }))}>{voiceModels.map((model) => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</select> : <KeyboardInput aria-label="מודל קול" className="text-field ltr" value={ai.voiceModel} onChange={(event) => setAi((current) => ({ ...current, voiceModel: event.target.value }))} />}<label>מודל תמונה · {mediaProviderMeta[ai.imageProvider].title}</label>{imageModels.length > 1 ? <select aria-label="מודל תמונה" className="text-field ltr" value={ai.imageModel} onChange={(event) => setAi((current) => ({ ...current, imageModel: event.target.value }))}>{imageModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select> : <KeyboardInput aria-label="מודל תמונה" className="text-field ltr" value={ai.imageModel} onChange={(event) => setAi((current) => ({ ...current, imageModel: event.target.value }))} />}<label>מודל וידאו · {mediaProviderMeta[ai.videoProvider].title}</label>{videoModels.length > 1 ? <select aria-label="מודל וידאו" className="text-field ltr" value={ai.videoModel} onChange={(event) => setAi((current) => ({ ...current, videoModel: event.target.value }))}>{videoModels.map((model) => <option value={model.id} key={model.id}>{model.name || model.id}</option>)}</select> : <KeyboardInput aria-label="מודל וידאו" className="text-field ltr" value={ai.videoModel} onChange={(event) => setAi((current) => ({ ...current, videoModel: event.target.value }))} />}<small className="small-note">מזהי ברירת המחדל נבחרו לפי תיעוד הספקים. שינוי ידני מיועד למודל בעל אותה סכמת API.</small></div></details>

@@ -1,5 +1,69 @@
 export type MediaProvider = "openai" | "openrouter" | "kie" | "fal";
 
+export type PoolProgress = { completed: number; total: number; active: number; failed: number };
+
+export const providerConcurrency: Record<MediaProvider, { image: number; video: number }> = {
+  openai: { image: 3, video: 2 },
+  openrouter: { image: 3, video: 3 },
+  kie: { image: 3, video: 5 },
+  fal: { image: 2, video: 2 },
+};
+
+export function isRetryableStatus(status: number, method = "GET") {
+  if (status === 429) return true;
+  return method.toUpperCase() === "GET" && [500, 502, 503, 504].includes(status);
+}
+
+export function retryAfterMilliseconds(value: string | null, now = Date.now()) {
+  if (!value) return 0;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - now) : 0;
+}
+
+export function retryDelayMilliseconds(attempt: number, retryAfter: string | null = null) {
+  return Math.min(30_000, Math.max(1_000 * 2 ** Math.max(0, attempt), retryAfterMilliseconds(retryAfter)));
+}
+
+export async function runTaskPool<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+  options: { onProgress?: (progress: PoolProgress) => void; shouldStop?: () => boolean } = {},
+) {
+  const results: Array<PromiseSettledResult<R>> = new Array(items.length);
+  const limit = Math.max(1, Math.min(Math.floor(concurrency) || 1, items.length || 1));
+  let cursor = 0;
+  let completed = 0;
+  let active = 0;
+  let failed = 0;
+  const report = () => options.onProgress?.({ completed, total: items.length, active, failed });
+  report();
+  const runner = async () => {
+    while (!options.shouldStop?.()) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      active += 1;
+      report();
+      try {
+        const value = await worker(items[index], index);
+        results[index] = { status: "fulfilled", value };
+      } catch (reason) {
+        failed += 1;
+        results[index] = { status: "rejected", reason };
+      } finally {
+        active -= 1;
+        completed += 1;
+        report();
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: limit }, runner));
+  return results;
+}
+
 export const mediaProviderMeta: Record<MediaProvider, { title: string; short: string; note: string }> = {
   openai: { title: "OpenAI", short: "AI", note: "תמונה באיכות גבוהה" },
   openrouter: { title: "OpenRouter", short: "OR", note: "תמונה ווידאו ממספר ספקים" },

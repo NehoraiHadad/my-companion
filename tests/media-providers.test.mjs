@@ -4,7 +4,8 @@ import {
   buildFalImageTask, buildFalVideoTask, buildKieImageTask, buildKieVideoTask,
   defaultCapabilityModels, parseFalAudioUrl, parseFalMediaUrl, parseFalSubmission,
   parseFalText, parseKieTask, parseKieTaskId,
-  estimateVideoCredits,
+  estimateVideoCredits, isRetryableStatus, providerConcurrency, retryAfterMilliseconds,
+  retryDelayMilliseconds, runTaskPool,
 } from "../src/mediaProviders.ts";
 
 test("every provider has defaults for all four capability routes", () => {
@@ -47,4 +48,38 @@ test("published KIE estimates are explicit and unknown provider prices stay unkn
   assert.equal(estimateVideoCredits("kie", "bytedance/seedance-2-mini", 5), 12);
   assert.equal(estimateVideoCredits("kie", "minimax-h3/image-to-video", 5), 156);
   assert.equal(estimateVideoCredits("fal", "fal-ai/wan/v2.2-5b/image-to-video", 5), null);
+});
+
+test("provider-aware concurrency is conservative and capability specific", () => {
+  assert.deepEqual(providerConcurrency.kie, { image: 3, video: 5 });
+  assert.deepEqual(providerConcurrency.fal, { image: 2, video: 2 });
+  assert.equal(providerConcurrency.openrouter.video, 3);
+  assert.equal(providerConcurrency.openai.video, 2);
+});
+
+test("retry helpers honor Retry-After and avoid retrying unsafe server errors", () => {
+  assert.equal(isRetryableStatus(429, "POST"), true);
+  assert.equal(isRetryableStatus(503, "GET"), true);
+  assert.equal(isRetryableStatus(503, "POST"), false);
+  assert.equal(retryAfterMilliseconds("4"), 4_000);
+  assert.equal(retryAfterMilliseconds("Thu, 01 Jan 2026 00:00:05 GMT", Date.parse("Thu, 01 Jan 2026 00:00:00 GMT")), 5_000);
+  assert.equal(retryDelayMilliseconds(2, "7"), 7_000);
+});
+
+test("task pool respects its limit and keeps successful work after a failure", async () => {
+  let active = 0;
+  let peak = 0;
+  const progress = [];
+  const results = await runTaskPool([0, 1, 2, 3, 4], 2, async (item) => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active -= 1;
+    if (item === 2) throw new Error("expected failure");
+    return item * 2;
+  }, { onProgress: (value) => progress.push(value) });
+  assert.equal(peak, 2);
+  assert.equal(results.filter((result) => result?.status === "fulfilled").length, 4);
+  assert.equal(results[2].status, "rejected");
+  assert.deepEqual(progress.at(-1), { completed: 5, total: 5, active: 0, failed: 1 });
 });
