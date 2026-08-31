@@ -51,6 +51,7 @@ type AiSettings = {
   imageConsent: boolean;
   autoEvents: boolean;
   autoVoice: boolean;
+  videoPresetVersion: number;
 };
 type ImageModel = { id: string; name: string; architecture?: { input_modalities?: string[]; output_modalities?: string[] } };
 type VoiceModel = { id: string; name?: string; architecture?: { output_modalities?: string[] } };
@@ -61,7 +62,7 @@ const V4_STORAGE_KEY = "little-friend-state-v4";
 const V3_STORAGE_KEY = "little-friend-state-v3";
 const V2_STORAGE_KEY = "little-friend-state-v2";
 const OLD_STORAGE_KEY = "pocket-companion-state-v1";
-const AI_KEY = "little-friend-ai-v5";
+const AI_KEY = "little-friend-ai-v6";
 const DecorVisual = lazy(() => import("./decorArt"));
 const resetScroll = (selector: string) => {
   const reset = () => { const scroll = document.querySelector<HTMLElement>(selector); if (scroll) scroll.scrollTop = 0; };
@@ -85,6 +86,7 @@ const defaultAi: AiSettings = {
   imageConsent: false,
   autoEvents: true,
   autoVoice: false,
+  videoPresetVersion: 1,
 };
 
 const themes: Array<{ id: ThemeId; title: string; note: string; image: string }> = [
@@ -271,16 +273,19 @@ function normalizeAi(merged: Partial<AiSettings>): AiSettings {
   const migratedProvider: MediaProvider = merged.provider ?? (merged.openRouterKey || merged.textModel?.includes("/") ? "openrouter" : "openai");
   const oldTextModel = !merged.textModel || ["gpt-5-mini", "openai/gpt-5-mini"].includes(merged.textModel);
   const legacyMedia = (merged as AiSettings & { mediaProvider?: MediaProvider }).mediaProvider;
-  return { ...defaultAi, ...merged, provider: migratedProvider, voiceProvider: merged.voiceProvider ?? migratedProvider, imageProvider: merged.imageProvider ?? legacyMedia ?? migratedProvider, videoProvider: merged.videoProvider ?? legacyMedia ?? "openrouter", textModel: oldTextModel ? (migratedProvider === "openai" ? "gpt-5.6-luna" : "openai/gpt-5.6-luna") : merged.textModel! };
+  const videoProvider = merged.videoProvider ?? legacyMedia ?? "openrouter";
+  const upgradeKieVideoPreset = (merged.videoPresetVersion ?? 0) < 1 && videoProvider === "kie" && (!merged.videoModel || merged.videoModel === "bytedance/seedance-2-mini");
+  return { ...defaultAi, ...merged, provider: migratedProvider, voiceProvider: merged.voiceProvider ?? migratedProvider, imageProvider: merged.imageProvider ?? legacyMedia ?? migratedProvider, videoProvider, videoModel: upgradeKieVideoPreset ? defaultCapabilityModels.kie.video : merged.videoModel ?? defaultCapabilityModels[videoProvider].video, videoPresetVersion: 1, textModel: oldTextModel ? (migratedProvider === "openai" ? "gpt-5.6-luna" : "openai/gpt-5.6-luna") : merged.textModel! };
 }
 
 function loadAi(): AiSettings {
   try {
     const current = JSON.parse(sessionStorage.getItem(AI_KEY) ?? "{}") as Partial<AiSettings>;
+    const v5 = JSON.parse(sessionStorage.getItem("little-friend-ai-v5") ?? "{}") as Partial<AiSettings>;
     const v4 = JSON.parse(sessionStorage.getItem("little-friend-ai-v4") ?? "{}") as Partial<AiSettings>;
     const v3 = JSON.parse(sessionStorage.getItem("little-friend-ai-v3") ?? "{}") as Partial<AiSettings>;
     const previous = JSON.parse(sessionStorage.getItem("little-friend-ai-v2") ?? "{}") as Partial<AiSettings>;
-    return normalizeAi({ ...previous, ...v3, ...v4, ...current });
+    return normalizeAi({ ...previous, ...v3, ...v4, ...v5, ...current });
   }
   catch { return defaultAi; }
 }
@@ -414,7 +419,10 @@ export default function Prototype() {
     if (!encryptedAiStorage) return;
     let active = true;
     void readEncryptedAiSettings().then((saved) => {
-      if (active && Object.keys(saved).length) setAi((current) => normalizeAi({ ...current, ...saved } as Partial<AiSettings>));
+      if (active && Object.keys(saved).length) {
+        const migrated = normalizeAi(saved as Partial<AiSettings>);
+        setAi((current) => normalizeAi({ ...current, ...migrated }));
+      }
     }).finally(() => { if (active) setEncryptedAiLoaded(true); });
     return () => { active = false; };
   }, [encryptedAiStorage]);
@@ -1666,7 +1674,7 @@ export default function Prototype() {
 
   const clearSavedAiKeys = () => {
     void clearEncryptedAiSettings();
-    for (const key of [AI_KEY, "little-friend-ai-v4", "little-friend-ai-v3", "little-friend-ai-v2"]) sessionStorage.removeItem(key);
+    for (const key of [AI_KEY, "little-friend-ai-v5", "little-friend-ai-v4", "little-friend-ai-v3", "little-friend-ai-v2"]) sessionStorage.removeItem(key);
     setAi((current) => ({ ...current, openAiKey: "", openRouterKey: "", kieKey: "", falKey: "" }));
     setAiStatus("idle"); setVoiceStatus("idle"); setMediaStatus("idle"); setVideoStatus("idle");
     clearAiError();
@@ -1783,7 +1791,7 @@ export default function Prototype() {
             {!allScenesApproved ? <div className="blocked-note">צריך לבדוק ולאשר את כל שלוש תמונות החדרים לפני חיוב על וידאו ({approvedSceneCount}/3 אושרו).</div> : motionBlock ? <div className="blocked-note">{motionBlock}</div> : null}
             {aiErrorFor("motion")}
             <div className="usage-card"><span>נכסים מוכנים</span><strong>{readyAnimationCount}/{totalAnimationCount}</strong><small>{game.aiUsage.imageCredits || game.aiUsage.videoCredits ? `נמדדו ב־KIE: תמונות ${game.aiUsage.imageCredits.toFixed(2)} · וידאו ${game.aiUsage.videoCredits.toFixed(2)} קרדיטים` : estimatedClipCredits === null ? "הספק לא חושף אומדן קרדיטים אחיד" : `אומדן לסרטון: ${estimatedClipCredits} קרדיטים`}</small></div>
-            <div className="small-note">כל פעולה היא וידאו מלא של החדר ב־720p לכל היותר. תמונות השינה מוכנות תחילה במקביל, ואז הסרטונים רצים בתור מוגבל לפי הספק. עומס זמני מאט ומנסה שוב אוטומטית.</div>
+            <div className="small-note">כל פעולה היא וידאו מלא של החדר באיכות החסכונית של המודל. ב־KIE ברירת המחדל היא MiniMax H3 ב־768p. תמונות השינה מוכנות תחילה במקביל, ואז הסרטונים רצים בתור מוגבל לפי הספק.</div>
           </> : null}</article>
           {mediaHasVideo ? <article className="ai-feature-card compact-feature"><div className="ai-section-title"><MoonIcon /><div><strong>חלום וידאו</strong><span>קטע חגיגי לצפייה, בנפרד מלולאות הטיפול.</span></div></div>{progressRow(isDreaming)}<button className="wide-button" disabled={Boolean(dreamBlock) || isDreaming} onClick={() => void generateDream()}><MoonIcon />{isDreaming ? "יוצרים חלום…" : "יצירת חלום"}</button>{dreamBlock ? <div className="blocked-note">{dreamBlock}</div> : null}{aiErrorFor("dream")}{videoUrl ? <video className="dream-video" controls playsInline src={videoUrl} /> : null}</article> : null}
           <details className="advanced-ai"><summary>מודלים והגדרות מתקדמות</summary><div><label>מודל שפה · {mediaProviderMeta[ai.provider as MediaProvider].title}</label><KeyboardInput id="text-model" className="text-field ltr" value={ai.textModel} onChange={(event) => setAi((current) => ({ ...current, textModel: event.target.value }))} /><label>מודל קול · {mediaProviderMeta[ai.voiceProvider].title}</label>{voiceModels.length > 1 ? <select aria-label="מודל קול" className="text-field ltr" value={ai.voiceModel} onChange={(event) => setAi((current) => ({ ...current, voiceModel: event.target.value }))}>{voiceModels.map((model) => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</select> : <KeyboardInput aria-label="מודל קול" className="text-field ltr" value={ai.voiceModel} onChange={(event) => setAi((current) => ({ ...current, voiceModel: event.target.value }))} />}<label>מודל תמונה · {mediaProviderMeta[ai.imageProvider].title}</label>{imageModels.length > 1 ? <select aria-label="מודל תמונה" className="text-field ltr" value={ai.imageModel} onChange={(event) => setAi((current) => ({ ...current, imageModel: event.target.value }))}>{imageModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select> : <KeyboardInput aria-label="מודל תמונה" className="text-field ltr" value={ai.imageModel} onChange={(event) => setAi((current) => ({ ...current, imageModel: event.target.value }))} />}<label>מודל וידאו · {mediaProviderMeta[ai.videoProvider].title}</label>{videoModels.length > 1 ? <select aria-label="מודל וידאו" className="text-field ltr" value={ai.videoModel} onChange={(event) => setAi((current) => ({ ...current, videoModel: event.target.value }))}>{videoModels.map((model) => <option value={model.id} key={model.id}>{model.name || model.id}</option>)}</select> : <KeyboardInput aria-label="מודל וידאו" className="text-field ltr" value={ai.videoModel} onChange={(event) => setAi((current) => ({ ...current, videoModel: event.target.value }))} />}<small className="small-note">מזהי ברירת המחדל נבחרו לפי תיעוד הספקים. שינוי ידני מיועד למודל בעל אותה סכמת API.</small></div></details>

@@ -74,14 +74,14 @@ export const mediaProviderMeta: Record<MediaProvider, { title: string; short: st
 export const defaultMediaModels: Record<MediaProvider, { image: string; video: string }> = {
   openai: { image: "gpt-image-2", video: "" },
   openrouter: { image: "openai/gpt-image-2", video: "minimax/hailuo-3" },
-  kie: { image: "gpt-image-2-image-to-image", video: "bytedance/seedance-2-mini" },
+  kie: { image: "gpt-image-2-image-to-image", video: "minimax-h3/image-to-video" },
   fal: { image: "fal-ai/nano-banana-2/edit", video: "fal-ai/wan/v2.2-5b/image-to-video" },
 };
 
 export const defaultCapabilityModels: Record<MediaProvider, { text: string; voice: string; image: string; video: string }> = {
   openai: { text: "gpt-5.6-luna", voice: "gpt-4o-mini-tts", image: "gpt-image-2", video: "sora-2" },
   openrouter: { text: "openai/gpt-5.6-luna", voice: "openai/gpt-4o-mini-tts-2025-12-15", image: "openai/gpt-image-2", video: "minimax/hailuo-3" },
-  kie: { text: "gpt-5-6-luna", voice: "elevenlabs/text-to-speech-multilingual-v2", image: "gpt-image-2-image-to-image", video: "bytedance/seedance-2-mini" },
+  kie: { text: "gpt-5-6-luna", voice: "elevenlabs/text-to-speech-multilingual-v2", image: "gpt-image-2-image-to-image", video: "minimax-h3/image-to-video" },
   fal: { text: "google/gemini-2.5-flash", voice: "fal-ai/elevenlabs/tts/multilingual-v2", image: "fal-ai/nano-banana-2/edit", video: "fal-ai/wan/v2.2-5b/image-to-video" },
 };
 
@@ -98,6 +98,7 @@ export function buildKieVideoTask(model: string, prompt: string, firstFrameUrl: 
         first_frame_url: firstFrameUrl,
         last_frame_url: firstFrameUrl,
         duration: Math.max(5, Math.min(15, duration === 5 ? 6 : duration)),
+        resolution: "768P",
       },
     };
   }
@@ -119,7 +120,7 @@ export function buildKieVideoTask(model: string, prompt: string, firstFrameUrl: 
 export function estimateVideoCredits(provider: MediaProvider, model: string, duration = 5): number | null {
   if (provider !== "kie") return null;
   const normalized = model.toLowerCase();
-  if (normalized.includes("minimax-h3")) return 26 * Math.max(6, duration);
+  if (normalized.includes("minimax-h3")) return 8 * Math.max(6, duration);
   if (normalized.includes("seedance-2-mini")) return 2.4 * duration;
   return null;
 }

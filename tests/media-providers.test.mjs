@@ -15,6 +15,7 @@ test("every provider has defaults for all four capability routes", () => {
     assert.ok(defaultCapabilityModels[provider].image);
     assert.ok(defaultCapabilityModels[provider].video);
   }
+  assert.equal(defaultCapabilityModels.kie.video, "minimax-h3/image-to-video");
 });
 
 test("KIE builders follow unified job API schemas", () => {
@@ -30,6 +31,7 @@ test("KIE builders follow unified job API schemas", () => {
   assert.equal(h3.input.first_frame_url, "https://a.test/frame.webp");
   assert.equal(h3.input.last_frame_url, "https://a.test/frame.webp");
   assert.equal(h3.input.duration, 6);
+  assert.equal(h3.input.resolution, "768P");
   assert.equal(parseKieTaskId({ data: { taskId: "task-1" } }), "task-1");
   assert.deepEqual(parseKieTask({ data: { state: "success", resultJson: '{"resultUrls":["https://a.test/out.mp4"]}' } }), { state: "success", url: "https://a.test/out.mp4", error: undefined });
 });
@@ -46,7 +48,7 @@ test("fal builders and queue parsers support image, video, text and voice", () =
 
 test("published KIE estimates are explicit and unknown provider prices stay unknown", () => {
   assert.equal(estimateVideoCredits("kie", "bytedance/seedance-2-mini", 5), 12);
-  assert.equal(estimateVideoCredits("kie", "minimax-h3/image-to-video", 5), 156);
+  assert.equal(estimateVideoCredits("kie", "minimax-h3/image-to-video", 5), 48);
   assert.equal(estimateVideoCredits("fal", "fal-ai/wan/v2.2-5b/image-to-video", 5), null);
 });
 

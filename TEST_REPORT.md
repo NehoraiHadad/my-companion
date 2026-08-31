@@ -1,6 +1,6 @@
-# My Companion v5.7.0 — verification report
+# My Companion v5.8.0 — verification report
 
-Date: 2026-08-30
+Date: 2026-08-31
 
 ## Result
 
@@ -13,8 +13,15 @@ Date: 2026-08-30
 - Android packaging and signing: passed.
 - APK ZIP integrity: passed with no compressed-data errors.
 - APK packaging verification: passed in Nitron's final verification stage.
-- Output: `deliverables/My-Companion-v5.7.0.apk` (4,668,638 bytes).
-- SHA-256: `946b837e93002891f65c9d945f4b818ec73b2e8b8504d7bb4d291e6d52e1acb8`.
+- Output: `deliverables/My-Companion-v5.8.0.apk` (4,668,638 bytes).
+- SHA-256: `c734cc3a98807cd09a76514ad82bb65f1afc821663ef8fafdfefacc47af6acd5`.
+
+## MiniMax H3 768P default
+
+- KIE video now defaults to `minimax-h3/image-to-video`; an existing saved KIE setup that still uses the previous Seedance Mini default is migrated once without adding a new ordinary-user setting.
+- The H3 image-to-video request explicitly sends `resolution: "768P"`, the approved room scene as both first and last frame, and a six-second duration for the five-second gameplay-loop slot.
+- The published KIE estimate is now 8 credits per generated second at 768P, so the UI displays 48 credits for one gameplay clip and scales the pack estimate from that value.
+- Browser QA confirmed that selecting KIE for video chooses the H3 model and displays the 48-credit estimate while leaving resolution out of the ordinary controls.
 
 ## Bounded parallel generation
 
@@ -61,7 +68,7 @@ A paid smoke test used only the built-in default puppy and sunrise-room assets; 
 - Scene result: the puppy was placed naturally on the rug with matching scale, perspective, lighting, and contact shadow while retaining a close identity match.
 - H3 result: 1440×2560 H.264 video, about 6.58 seconds, 1.18 MB.
 - First/last-frame SSIM: 0.982169, confirming a visually close loop boundary.
-- KIE's current H3 task schema did not expose a resolution selector and returned 2K output. H3 also returned an AAC audio track despite the no-audio prompt; game playback remains muted. The cheaper KIE Seedance Mini route remains the default and explicitly requests 720p with generated audio disabled.
+- At the time of this earlier test, KIE's H3 task schema did not expose a resolution selector and returned 2K output. KIE's schema now exposes `768P | 2K`; v5.8.0 explicitly requests 768P. The earlier output also contained an AAC audio track despite the no-audio prompt, so game playback remains muted.
 - The key was supplied only at runtime through `KIE_API_KEY`; it is not present in source, APK, report, or Git history.
 
 ## Mobile fixes retained
@@ -79,6 +86,6 @@ Generated images and videos are downloaded immediately into local IndexedDB. Use
 
 ## Test boundary
 
-The earlier live paid test covered KIE GPT Image 2 and MiniMax H3 only. No additional paid requests were made for v5.7.0; bounded concurrency, retry behavior, aggregate accounting, and encrypted-key persistence were verified through type-checking, unit tests, storage-contract tests, production packaging inspection, and the secure HTTPS origin used by the Android WebView. The approval, sample, pack, sleep-state, resume, migration, and UI paths remain covered by unit tests and mock flows. Other provider paths were verified through their request builders, response parsers, polling state handling, and documented queue limits.
+The earlier live paid test covered KIE GPT Image 2 and MiniMax H3 only. No additional paid requests were made for v5.8.0; the new 768P field, preset migration, 48-credit estimate, bounded concurrency, retry behavior, aggregate accounting, and encrypted-key persistence were verified through type-checking, unit tests, storage-contract tests, production packaging inspection, browser QA, and the secure HTTPS origin used by the Android WebView. The approval, sample, pack, sleep-state, resume, migration, and UI paths remain covered by unit tests and mock flows. Other provider paths were verified through their request builders, response parsers, polling state handling, and documented queue limits.
 
 Native-mode behavior is covered by Android preparation tests and inspection of the packaged HTML, which contains the `native-apk` marker and therefore hides simulator chrome. The generic Vite warning for a JavaScript chunk larger than 500 kB remains and does not block packaging.
