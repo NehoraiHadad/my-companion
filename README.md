@@ -2,7 +2,7 @@
 
 A local-first Android companion game inspired by the care loop of classic Tamagotchi toys, with a premium modern visual direction and a light humorous voice.
 
-## Included in v5.10.0
+## Included in v5.10.1
 
 - Four continuously time-based needs: fullness, energy, hygiene, and joy, including correct in-session decay and resume processing.
 - Feed, sleep, clean, and play actions with cross-effects and XP progression.
@@ -28,6 +28,7 @@ A local-first Android companion game inspired by the care loop of classic Tamago
 - Provider-neutral scene pipeline: one canonical transparent master is placed inside each full room scene with an explicit pose, room scale, perspective, light spill, occlusion, and contact shadow instead of being layered above the background.
 - Review-gated scene-animation studio: all three complete room scenes must be approved before video, one sample clip must be reviewed before the remaining pack can run, and failed clips can be resumed individually.
 - Every generated scene and video remains manageable: replacing or removing an individual room scene or motion archives the previous version in a local gallery, where it can be restored without another paid request or deleted permanently.
+- Scene approval, regenerate, and remove controls remain compact beneath each preview; preview-card dimensions no longer leak into the action row on narrow Android screens.
 - Paid replacements keep the existing local image or clip active until its replacement has been generated and saved successfully.
 - Five room-specific motions — idle, eat, play, sleep, and celebrate — are stored for each room. Transient actions return to the approved idle scene; sleep uses a separately generated sleeping still and a stable breathing loop.
 - Each full-scene motion locks the camera and room, uses an efficient model-supported resolution, and sends only the approved opening frame instead of forcing an identical last frame through a morph. No transparent floating-character video is used in the production path.
@@ -61,6 +62,6 @@ The Android host source, including the local HTTPS asset loader and native image
 ## Android package
 
 - Package: `app.pocketcompanion.local`
-- Version: `5.10.0`
+- Version: `5.10.1`
 - Minimum Android: API 21
 - Target Android: API 34

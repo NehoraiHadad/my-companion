@@ -1,13 +1,13 @@
 {
   "name": "pocket-companion-prototype",
   "private": true,
-  "version": "5.10.0",
+  "version": "5.10.1",
   "type": "module",
   "scripts": {
     "check:runtime": "node scripts/check-mobile-runtime.mjs",
     "update:runtime-lock": "node scripts/update-mobile-runtime-lock.mjs",
     "test:runtime": "playwright test",
-    "test:game": "node --test tests/game-engine.test.mjs tests/ai-game.test.mjs tests/animation-director.test.mjs tests/asset-management.test.mjs tests/character-director.test.mjs tests/kie-jobs.test.mjs tests/media-providers.test.mjs",
+    "test:game": "node --test tests/game-engine.test.mjs tests/ai-game.test.mjs tests/animation-director.test.mjs tests/asset-management.test.mjs tests/character-director.test.mjs tests/kie-jobs.test.mjs tests/media-providers.test.mjs tests/ui-layout.test.mjs",
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "test:android": "node --test tests/android-build.test.mjs",
     "predev": "npm run check:runtime",

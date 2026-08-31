@@ -1,11 +1,11 @@
-# My Companion v5.10.0 — verification report
+# My Companion v5.10.1 — verification report
 
 Date: 2026-08-31
 
 ## Result
 
 - TypeScript production type-check: passed.
-- Game and provider tests: 82/82 passed.
+- Game, provider, and UI regression tests: 83/83 passed.
 - Android packaging and encrypted-storage regression tests: 5/5 passed.
 - Sites/static-host tests: 4/4 passed.
 - Protected mobile runtime integrity: 28 files passed.
@@ -13,8 +13,16 @@ Date: 2026-08-31
 - Android packaging and signing: passed.
 - APK ZIP integrity: passed with no compressed-data errors.
 - APK packaging verification: passed in Nitron's final verification stage.
-- Output: `deliverables/My-Companion-v5.10.0.apk` (4,676,830 bytes).
-- SHA-256: `9da750d42a36c5630f4be97cd22750a2d224638ca43683f9a64d1c0a39dc6e24`.
+- Output: `deliverables/My-Companion-v5.10.1.apk` (4,676,830 bytes).
+- SHA-256: `46b888efd58e7f46f9602970a2d5980b544bca6aa97e1e82f51d52b3cb481d57`.
+
+## Compact scene actions regression
+
+- The scene preview now owns an explicit `character-variant-preview` class instead of styling every direct `div` inside a variant card.
+- This prevents the `124px` preview height, border, overflow, and background styles from being applied to the regenerate/remove action container.
+- A dedicated regression test requires the preview selector to remain explicit, rejects the broad `.character-variant>div` selector, and verifies two compact `36px` action buttons.
+- Pixel 10 browser QA confirmed `124px` preview height, compact `36px` action controls, two equal `158px` columns, and no broad selector in the loaded stylesheet.
+- The AI scroll surface reached `remaining: 0`, confirming the final controls remain reachable above Android navigation.
 
 ## Local AI gallery and asset controls
 
@@ -111,6 +119,6 @@ Generated images and videos are downloaded immediately into local IndexedDB. Use
 
 ## Test boundary
 
-The earlier live paid test covered KIE GPT Image 2 and MiniMax H3 only. No additional paid requests were made for v5.10.0; the new prompt, single-frame request, background resume, gallery, KIE text parser, and Hebrew voice adapter were verified without consuming credits through type-checking, unit tests, storage-contract tests, production packaging inspection, browser QA, and the secure HTTPS origin used by the Android WebView. Other provider paths were verified through their request builders, response parsers, polling state handling, and documented queue limits.
+The earlier live paid test covered KIE GPT Image 2 and MiniMax H3 only. No additional paid requests were made for v5.10.1; the UI correction and the earlier prompt, single-frame request, background resume, gallery, KIE text parser, and Hebrew voice adapter were verified without consuming credits through type-checking, unit tests, storage-contract tests, production packaging inspection, browser QA, and the secure HTTPS origin used by the Android WebView. Other provider paths were verified through their request builders, response parsers, polling state handling, and documented queue limits.
 
 Native-mode behavior is covered by Android preparation tests and inspection of the packaged HTML, which contains the `native-apk` marker and therefore hides simulator chrome. The generic Vite warning for a JavaScript chunk larger than 500 kB remains and does not block packaging.

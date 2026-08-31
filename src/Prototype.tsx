@@ -1999,7 +1999,7 @@ export default function Prototype() {
               const approved = item.id !== "master" && Boolean(game.aiSceneApprovals[item.id as ThemeId]);
               const theme = item.id as ThemeId;
               return <div className={`character-variant ${ready ? "ready" : ""} ${approved ? "approved" : ""}`} key={item.id}>
-                <div style={item.id === "master" ? undefined : { backgroundImage: `url(${item.image})` }}>{preview ? <img src={preview} alt={`תצוגת ${item.title}`} draggable={false} /> : <FaceIcon />}{ready ? <i><CheckIcon /></i> : null}</div>
+                <div className="character-variant-preview" style={item.id === "master" ? undefined : { backgroundImage: `url(${item.image})` }}>{preview ? <img src={preview} alt={`תצוגת ${item.title}`} draggable={false} /> : <FaceIcon />}{ready ? <i><CheckIcon /></i> : null}</div>
                 <strong>{item.title}</strong>
                 {item.id !== "master" && ready ? <>
                   <button type="button" onClick={() => setGame((current) => ({ ...current, aiSceneApprovals: { ...current.aiSceneApprovals, [theme]: !current.aiSceneApprovals[theme] }, animationSample: undefined }))}>{approved ? "אושר" : "לאישור"}</button>
