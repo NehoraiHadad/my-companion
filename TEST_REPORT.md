@@ -1,20 +1,35 @@
-# My Companion v5.8.0 — verification report
+# My Companion v5.9.0 — verification report
 
 Date: 2026-08-31
 
 ## Result
 
 - TypeScript production type-check: passed.
-- Game and provider tests: 74/74 passed.
+- Game and provider tests: 78/78 passed.
 - Android packaging and encrypted-storage regression tests: 5/5 passed.
 - Sites/static-host tests: 4/4 passed.
 - Protected mobile runtime integrity: 28 files passed.
-- Production web build: passed (520 modules).
+- Production web build: passed (521 modules).
 - Android packaging and signing: passed.
 - APK ZIP integrity: passed with no compressed-data errors.
 - APK packaging verification: passed in Nitron's final verification stage.
-- Output: `deliverables/My-Companion-v5.8.0.apk` (4,668,638 bytes).
-- SHA-256: `c734cc3a98807cd09a76514ad82bb65f1afc821663ef8fafdfefacc47af6acd5`.
+- Output: `deliverables/My-Companion-v5.9.0.apk` (4,672,734 bytes).
+- SHA-256: `b236239a9cdfa02e19515b29422f1058499e75f83f0ef7458ccafb061efba5d5`.
+
+## Local AI asset controls
+
+- An unapproved sample video can be approved, regenerated, or deleted. Regeneration states the estimated paid cost and keeps the previous sample available until the replacement is saved.
+- Every approved room scene can be regenerated or deleted. Deleting a scene also removes only that room's dependent sleep still and motion clips so stale media cannot reappear.
+- Every generated room-motion clip can be regenerated or deleted independently without deleting its room scene or sibling motions.
+- A separate confirmed action clears all locally generated masters, variants, room scenes, sleep stills, and clips while preserving game progress, the imported source photo, provider keys, and historical usage totals.
+- Pure state tests verify targeted deletion boundaries and preservation of unrelated state. Cloud mobile-browser QA verified the clear-all control and its explicit confirmation prompt.
+
+## Source-locked video direction
+
+- The video prompt now treats the approved room scene as final locked source material and requests only the required movement.
+- It explicitly prohibits restyling, beautifying, redrawing, re-rendering, cinematic/cartoon/3D/anime/realistic reinterpretation, face drift, costume changes, and color shifts.
+- The classic room uses a dedicated guardrail that preserves the reference frame's monochrome green pixel palette, shapes, detail level, lighting, and character design instead of making it smoother or realistic.
+- Request tests verify both the ordinary source-lock and the classic-room pixel guardrail.
 
 ## MiniMax H3 768P default
 
@@ -68,7 +83,7 @@ A paid smoke test used only the built-in default puppy and sunrise-room assets; 
 - Scene result: the puppy was placed naturally on the rug with matching scale, perspective, lighting, and contact shadow while retaining a close identity match.
 - H3 result: 1440×2560 H.264 video, about 6.58 seconds, 1.18 MB.
 - First/last-frame SSIM: 0.982169, confirming a visually close loop boundary.
-- At the time of this earlier test, KIE's H3 task schema did not expose a resolution selector and returned 2K output. KIE's schema now exposes `768P | 2K`; v5.8.0 explicitly requests 768P. The earlier output also contained an AAC audio track despite the no-audio prompt, so game playback remains muted.
+- At the time of this earlier test, KIE's H3 task schema did not expose a resolution selector and returned 2K output. KIE's schema now exposes `768P | 2K`; v5.9.0 explicitly requests 768P. The earlier output also contained an AAC audio track despite the no-audio prompt, so game playback remains muted.
 - The key was supplied only at runtime through `KIE_API_KEY`; it is not present in source, APK, report, or Git history.
 
 ## Mobile fixes retained
@@ -86,6 +101,6 @@ Generated images and videos are downloaded immediately into local IndexedDB. Use
 
 ## Test boundary
 
-The earlier live paid test covered KIE GPT Image 2 and MiniMax H3 only. No additional paid requests were made for v5.8.0; the new 768P field, preset migration, 48-credit estimate, bounded concurrency, retry behavior, aggregate accounting, and encrypted-key persistence were verified through type-checking, unit tests, storage-contract tests, production packaging inspection, browser QA, and the secure HTTPS origin used by the Android WebView. The approval, sample, pack, sleep-state, resume, migration, and UI paths remain covered by unit tests and mock flows. Other provider paths were verified through their request builders, response parsers, polling state handling, and documented queue limits.
+The earlier live paid test covered KIE GPT Image 2 and MiniMax H3 only. No additional paid requests were made for v5.9.0; the 768P field, preset migration, 48-credit estimate, bounded concurrency, retry behavior, aggregate accounting, encrypted-key persistence, source-locked prompts, and asset-management controls were verified through type-checking, unit tests, storage-contract tests, production packaging inspection, browser QA, and the secure HTTPS origin used by the Android WebView. The approval, replacement, deletion, sample, pack, sleep-state, resume, migration, and UI paths remain covered by unit tests and mock flows. Other provider paths were verified through their request builders, response parsers, polling state handling, and documented queue limits.
 
 Native-mode behavior is covered by Android preparation tests and inspection of the packaged HTML, which contains the `native-apk` marker and therefore hides simulator chrome. The generic Vite warning for a JavaScript chunk larger than 500 kB remains and does not block packaging.

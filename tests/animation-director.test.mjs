@@ -4,10 +4,12 @@ import { animationPackMotions, animationStorageKey, buildAnimationPrompt, buildA
 
 test("animation prompt preserves the selected subject kind and creates a loop", () => {
   const prompt = buildAnimationPrompt("baby", "נועה", "play");
-  assert.match(prompt, /same stylized baby/);
+  assert.match(prompt, /exact same baby/);
   assert.match(prompt, /return to the exact starting pose/);
   assert.match(prompt, /No camera movement/);
   assert.match(prompt, /no generated audio/);
+  assert.match(prompt, /Do not restyle, beautify, redraw, re-render, reinterpret/);
+  assert.match(prompt, /face drift, costume change, color shift/);
 });
 
 test("animation prompts keep people, babies, and pets visually distinct", () => {
@@ -15,16 +17,16 @@ test("animation prompts keep people, babies, and pets visually distinct", () => 
   const baby = buildAnimationPrompt("baby", "נועם", "eat");
   const pet = buildAnimationPrompt("pet", "פיץ", "sleep");
 
-  assert.match(person, /same stylized person/);
-  assert.match(baby, /same stylized baby/);
-  assert.match(pet, /same stylized pet/);
+  assert.match(person, /exact same person/);
+  assert.match(baby, /exact same baby/);
+  assert.match(pet, /exact same pet/);
   assert.match(person, /Keep human anatomy and age exactly/);
   assert.match(baby, /human baby anatomy and age exactly/);
   assert.match(pet, /exact animal species and natural anatomy/);
 });
 
 test("video requests prefer an efficient supported resolution and close loops when possible", () => {
-  const request = buildAnimationRequest({ model: "minimax/hailuo-3", photoDataUrl: "data:image/webp;base64,abc", kind: "pet", name: "פיץ", motion: "idle", supportedResolutions: ["2K", "768p"], supportedFrameImages: ["first_frame", "last_frame"] });
+  const request = buildAnimationRequest({ model: "minimax/hailuo-3", photoDataUrl: "data:image/webp;base64,abc", kind: "pet", name: "פיץ", motion: "idle", theme: "midnight", supportedResolutions: ["2K", "768p"], supportedFrameImages: ["first_frame", "last_frame"] });
   assert.equal(request.model, "minimax/hailuo-3");
   assert.equal(request.aspect_ratio, "9:16");
   assert.equal(request.resolution, "768p");
@@ -33,6 +35,15 @@ test("video requests prefer an efficient supported resolution and close loops wh
   assert.equal(request.frame_images[0].image_url.url, "data:image/webp;base64,abc");
   assert.equal(request.frame_images[1].frame_type, "last_frame");
   assert.equal(request.frame_images[1].image_url.url, "data:image/webp;base64,abc");
+  assert.match(request.prompt, /final approved design/);
+});
+
+test("classic-room video preserves the approved pixel rendering without redesigning the character", () => {
+  const prompt = buildAnimationPrompt("person", "דנה", "idle", "classic");
+  assert.match(prompt, /monochrome green pixel rendering is intentional/);
+  assert.match(prompt, /exact pixel-art palette, shapes, detail level, lighting, and character design/);
+  assert.match(prompt, /do not make it realistic, smoother, more detailed, or visually different/);
+  assert.doesNotMatch(prompt, /cinematic, cartoon, 3D, anime/);
 });
 
 test("animation storage keys isolate visual revisions", () => {

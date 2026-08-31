@@ -3,11 +3,12 @@ import {
   AvatarIcon, BackpackIcon, BellIcon, CameraIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CircleIcon,
   ClockIcon, CookieIcon, ExclamationTriangleIcon, FaceIcon, GearIcon,
   HeartFilledIcon, HomeIcon, LightningBoltIcon, LockClosedIcon, MagicWandIcon,
-  InfoCircledIcon, MoonIcon, PaperPlaneIcon, PersonIcon, PlayIcon, PlusCircledIcon, RocketIcon, SewingPinIcon, SpeakerLoudIcon, StackIcon, StarFilledIcon,
+  InfoCircledIcon, MoonIcon, PaperPlaneIcon, PersonIcon, PlayIcon, PlusCircledIcon, ReloadIcon, RocketIcon, SewingPinIcon, SpeakerLoudIcon, StackIcon, StarFilledIcon,
   SunIcon, TokensIcon, TrashIcon,
 } from "@radix-ui/react-icons";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { extractAiResponseText, parseAiEvent, type AiProvider } from "./aiGame";
+import { clearAiAssetState, removeAnimationAssetState, removeSceneAssetState } from "./assetManagement";
 import { animationPackMotions, animationStorageKey, buildAnimationRequest, motionMeta, sceneAnimationStorageKey } from "./animationDirector";
 import { buildCharacterPrompt, buildOpenRouterCharacterRequest, buildOpenRouterSceneRequest, buildOpenRouterSleepSceneRequest, buildRoomUpgradePrompt, buildSceneCompositePrompt, buildSleepScenePrompt, characterStorageKey, characterVisuals, decorSetKey, roomStorageKey, sceneStorageKey, stateSceneStorageKey, type CharacterVisual } from "./characterDirector";
 import { defaultCompanionArt } from "./defaultCompanions";
@@ -1396,6 +1397,95 @@ export default function Prototype() {
     }
   };
 
+  const regenerateScene = async (theme: ThemeId) => {
+    const revision = game.visualRevision;
+    if (!game.aiCharacter) { raiseAiError("character", "צריך קודם ליצור דמות מאסטר."); return; }
+    if (!ai.imageConsent) { raiseAiError("character", "צריך לאשר את שליחת התמונות לספק לפני יצירה מחדש."); return; }
+    if (mediaStatus !== "ready" || !imageModels.length) { raiseAiError("character", "צריך להפעיל קודם ספק תמונה."); return; }
+    setIsStyling(true); setCharacterProgress(`יוצרים מחדש את חדר ${themes.find((item) => item.id === theme)?.title}`); clearAiError();
+    try {
+      const master = await loadMedia(characterStorageKey(revision, "master"));
+      if (!master) throw new Error("דמות המאסטר לא נמצאה במכשיר");
+      const roomReference = await urlToDataUrl(roomUrls[theme] ?? themes.find((item) => item.id === theme)!.image);
+      const scene = await requestSceneImage(roomReference, await blobToDataUrl(master), theme);
+      const roomSet = game.aiRooms[theme] ?? "base";
+      const sceneKey = sceneStorageKey(revision, theme, roomSet);
+      await saveMedia(sceneKey, scene);
+      if (revisionRef.current !== revision) return;
+      const sleepSet = game.aiStateScenes[theme]?.sleep;
+      const staleClipKeys = (Object.keys(game.sceneAnimationSlots[theme] ?? {}) as CompanionMotion[]).map((motion) => sceneAnimationStorageKey(revision, theme, motion));
+      await Promise.all([
+        sleepSet ? removeMedia([stateSceneStorageKey(revision, theme, "sleep", sleepSet)]) : Promise.resolve(),
+        removeClips(staleClipKeys),
+      ]);
+      const url = URL.createObjectURL(scene);
+      setSceneUrls((current) => { const previous = current[theme]; if (previous) URL.revokeObjectURL(previous); return { ...current, [theme]: url }; });
+      setStateSceneUrls((current) => { const previous = current[theme]; if (previous) URL.revokeObjectURL(previous); const next = { ...current }; delete next[theme]; return next; });
+      if (theme === game.theme) { Object.values(clipUrls).forEach((value) => value && URL.revokeObjectURL(value)); setClipUrls({}); setActiveMotion("idle"); }
+      setGame((current) => {
+        if (current.visualRevision !== revision) return current;
+        const cleared = removeSceneAssetState(current, theme);
+        return { ...cleared, aiScenes: { ...cleared.aiScenes, [theme]: roomSet }, aiSceneApprovals: { ...cleared.aiSceneApprovals, [theme]: false } };
+      });
+      say(`חדר ${themes.find((item) => item.id === theme)?.title} נוצר מחדש. בודקים ומאשרים לפני וידאו.`);
+    } catch (error) { raiseAiError("character", error instanceof Error ? error.message : "יצירת החדר מחדש נכשלה"); }
+    finally { setIsStyling(false); setCharacterProgress(""); }
+  };
+
+  const deleteSceneAsset = async (theme: ThemeId) => {
+    const revision = game.visualRevision;
+    const roomSet = game.aiScenes[theme];
+    if (!roomSet) return;
+    const sleepSet = game.aiStateScenes[theme]?.sleep;
+    const clipKeys = (Object.keys(game.sceneAnimationSlots[theme] ?? {}) as CompanionMotion[]).map((motion) => sceneAnimationStorageKey(revision, theme, motion));
+    try {
+      await Promise.all([
+        removeMedia([sceneStorageKey(revision, theme, roomSet), ...(sleepSet ? [stateSceneStorageKey(revision, theme, "sleep", sleepSet)] : [])]),
+        removeClips(clipKeys),
+      ]);
+      setSceneUrls((current) => { const previous = current[theme]; if (previous) URL.revokeObjectURL(previous); const next = { ...current }; delete next[theme]; return next; });
+      setStateSceneUrls((current) => { const previous = current[theme]; if (previous) URL.revokeObjectURL(previous); const next = { ...current }; delete next[theme]; return next; });
+      if (theme === game.theme) { Object.values(clipUrls).forEach((value) => value && URL.revokeObjectURL(value)); setClipUrls({}); setActiveMotion("idle"); }
+      setGame((current) => current.visualRevision === revision ? removeSceneAssetState(current, theme) : current);
+      say(`תמונת חדר ${themes.find((item) => item.id === theme)?.title} והסרטונים שתלויים בה נמחקו מהמכשיר.`);
+    } catch (error) { raiseAiError("character", error instanceof Error ? error.message : "מחיקת תמונת החדר נכשלה"); }
+  };
+
+  const deleteAnimationAsset = async (theme: ThemeId, companionMotion: CompanionMotion) => {
+    const revision = game.visualRevision;
+    try {
+      await removeClips([sceneAnimationStorageKey(revision, theme, companionMotion)]);
+      if (theme === game.theme) {
+        setClipUrls((current) => { const previous = current[companionMotion]; if (previous) URL.revokeObjectURL(previous); const next = { ...current }; delete next[companionMotion]; return next; });
+        if (activeMotion === companionMotion) setActiveMotion("idle");
+      }
+      setGame((current) => current.visualRevision === revision ? removeAnimationAssetState(current, theme, companionMotion) : current);
+      say(`הסרטון ${motionMeta[companionMotion].title} נמחק מהמכשיר.`);
+    } catch (error) { raiseAiError("motion", error instanceof Error ? error.message : "מחיקת הסרטון נכשלה"); }
+  };
+
+  const clearAllAiAssets = async () => {
+    const revision = game.visualRevision;
+    const mediaKeys = [
+      ...characterVisuals.map((visual) => characterStorageKey(revision, visual)),
+      ...(Object.keys(game.aiRooms) as ThemeId[]).map((theme) => roomStorageKey(theme, game.aiRooms[theme] ?? "")),
+      ...(Object.keys(game.aiScenes) as ThemeId[]).map((theme) => sceneStorageKey(revision, theme, game.aiScenes[theme])),
+      ...(Object.keys(game.aiStateScenes) as ThemeId[]).flatMap((theme) => game.aiStateScenes[theme]?.sleep ? [stateSceneStorageKey(revision, theme, "sleep", game.aiStateScenes[theme]!.sleep)] : []),
+    ];
+    const clipKeys = [
+      ...(Object.keys(game.animationSlots) as CompanionMotion[]).map((motion) => animationStorageKey(revision, motion)),
+      ...(Object.entries(game.sceneAnimationSlots) as Array<[ThemeId, Partial<Record<CompanionMotion, boolean>>]>).flatMap(([theme, slots]) => (Object.keys(slots) as CompanionMotion[]).map((motion) => sceneAnimationStorageKey(revision, theme, motion))),
+    ];
+    try {
+      await Promise.all([removeMedia(mediaKeys), removeClips(clipKeys)]);
+      [characterUrls, roomUrls, sceneUrls, stateSceneUrls, clipUrls].forEach((record) => Object.values(record).forEach((value) => value && URL.revokeObjectURL(value)));
+      if (videoUrl) URL.revokeObjectURL(videoUrl);
+      setCharacterUrls({}); setRoomUrls({}); setSceneUrls({}); setStateSceneUrls({}); setClipUrls({}); setVideoUrl(""); setActiveMotion("idle");
+      setGame((current) => current.visualRevision === revision ? clearAiAssetState(current) : current);
+      say("כל תוצרי ה־AI נמחקו. ההתקדמות, תמונת המקור והמפתחות נשארו במקומם.");
+    } catch (error) { raiseAiError("general", error instanceof Error ? error.message : "מחיקת תוצרי ה־AI נכשלה"); }
+  };
+
   const generateRoomUpgrade = async () => {
     const revision = game.visualRevision;
     const set = decorSetKey(game.decorations);
@@ -1520,11 +1610,13 @@ export default function Prototype() {
       : await loadMedia(sceneStorageKey(revision, theme, roomSet));
     if (!baseScene) throw new Error(`תמונת חדר ${themes.find((item) => item.id === theme)?.title} לא נמצאה במכשיר`);
     const recordBase = { provider: ai.videoProvider, model: ai.videoModel };
+    const previousRecord = game.animationAssets[theme]?.[companionMotion];
+    const hadExistingClip = Boolean(game.sceneAnimationSlots[theme]?.[companionMotion]);
     updateAnimationRecord(theme, companionMotion, revision, { ...recordBase, status: "generating" });
     try {
       const referenceDataUrl = await blobToDataUrl(baseScene);
       const capabilities = videoModels.find((model) => model.id === ai.videoModel);
-      const request = buildAnimationRequest({ model: ai.videoModel, photoDataUrl: referenceDataUrl, kind: game.characterKind, name: game.name, motion: companionMotion, supportedResolutions: capabilities?.supported_resolutions, supportedFrameImages: capabilities?.supported_frame_images });
+      const request = buildAnimationRequest({ model: ai.videoModel, photoDataUrl: referenceDataUrl, kind: game.characterKind, name: game.name, motion: companionMotion, theme, supportedResolutions: capabilities?.supported_resolutions, supportedFrameImages: capabilities?.supported_frame_images });
       const generated = await requestVideo(referenceDataUrl, request.prompt, motionMeta[companionMotion].duration, options.measureVideoCredits ?? true);
       const clipKey = sceneAnimationStorageKey(revision, theme, companionMotion);
       if (generated) {
@@ -1546,7 +1638,7 @@ export default function Prototype() {
       return readyRecord;
     } catch (error) {
       const message = error instanceof Error ? error.message : "יצירת האנימציה נכשלה";
-      updateAnimationRecord(theme, companionMotion, revision, { ...recordBase, status: "failed", error: message });
+      updateAnimationRecord(theme, companionMotion, revision, hadExistingClip ? previousRecord ?? { ...recordBase, status: "ready" } : { ...recordBase, status: "failed", error: message });
       throw error;
     }
   };
@@ -1761,13 +1853,24 @@ export default function Prototype() {
               const ready = item.id === "master" ? game.aiCharacter : Boolean(game.aiScenes[item.id as ThemeId]);
               const preview = item.id === "master" ? characterUrls.master || item.image : sceneUrls[item.id as ThemeId] || item.image;
               const approved = item.id !== "master" && Boolean(game.aiSceneApprovals[item.id as ThemeId]);
-              return <div className={`character-variant ${ready ? "ready" : ""} ${approved ? "approved" : ""}`} key={item.id}><div style={item.id === "master" ? undefined : { backgroundImage: `url(${item.image})` }}>{preview ? <img src={preview} alt={`תצוגת ${item.title}`} draggable={false} /> : <FaceIcon />}{ready ? <i><CheckIcon /></i> : null}</div><strong>{item.title}</strong>{item.id !== "master" && ready ? <button type="button" onClick={() => setGame((current) => ({ ...current, aiSceneApprovals: { ...current.aiSceneApprovals, [item.id as ThemeId]: !current.aiSceneApprovals[item.id as ThemeId] }, animationSample: undefined }))}>{approved ? "אושר" : "לאישור"}</button> : <small>{ready ? "מוכן" : item.id === "master" ? "זהות בסיס" : "טרם נוצר"}</small>}</div>;
+              const theme = item.id as ThemeId;
+              return <div className={`character-variant ${ready ? "ready" : ""} ${approved ? "approved" : ""}`} key={item.id}>
+                <div style={item.id === "master" ? undefined : { backgroundImage: `url(${item.image})` }}>{preview ? <img src={preview} alt={`תצוגת ${item.title}`} draggable={false} /> : <FaceIcon />}{ready ? <i><CheckIcon /></i> : null}</div>
+                <strong>{item.title}</strong>
+                {item.id !== "master" && ready ? <>
+                  <button type="button" onClick={() => setGame((current) => ({ ...current, aiSceneApprovals: { ...current.aiSceneApprovals, [theme]: !current.aiSceneApprovals[theme] }, animationSample: undefined }))}>{approved ? "אושר" : "לאישור"}</button>
+                  <div className="variant-asset-actions">
+                    <ConfirmAction className="asset-mini-button" icon={<ReloadIcon />} label="חדש" question="בקשת תמונה אחת בתשלום. התמונה הקיימת תישמר עד שהחדשה מוכנה." confirmLabel="ליצור מחדש" disabled={isStyling || Boolean(characterBlock)} onConfirm={() => void regenerateScene(theme)} />
+                    <ConfirmAction className="asset-mini-button danger" icon={<TrashIcon />} label="מחק" question="מחיקת תמונת החדר תמחק גם את סרטוני הפעולות שתלויים בה." confirmLabel="מחיקה" disabled={isStyling || Boolean(isAnimating)} onConfirm={() => void deleteSceneAsset(theme)} />
+                  </div>
+                </> : <small>{ready ? "מוכן" : item.id === "master" ? "זהות בסיס" : "טרם נוצר"}</small>}
+              </div>;
             })}
           </div>
           {progressRow(isStyling)}
           <div className="small-note">מאסטר: בקשת תמונה אחת. ערכה מלאה: {game.aiCharacter ? "3" : "4"} בקשות בתשלום. אחרי המאסטר, חדרי הסצנה נוצרים עד {providerConcurrency[ai.imageProvider].image} במקביל ונשמרים אחד־אחד.</div>
           <div className="small-note">הדמות נוצרת עם האנרגיה של השלב הנוכחי ({stageMeta[stage].title}) — אחרי אבולוציה אפשר לרענן.</div>
-          <button className="wide-button" disabled={Boolean(characterBlock) || isStyling} onClick={() => void stylizePhoto(false)}><FaceIcon />{isStyling ? "יוצרים…" : game.aiCharacter ? "יצירת מאסטר מחדש" : "יצירת דמות מאסטר"}</button>
+          {game.aiCharacter ? <ConfirmAction className="wide-button" icon={<ReloadIcon />} label={isStyling ? "יוצרים…" : "יצירת מאסטר מחדש"} question="בקשת תמונה אחת בתשלום. המאסטר הקיים יישמר עד שהחדש מוכן; לאחר ההחלפה יהיה צורך ליצור מחדש את תמונות החדרים." confirmLabel="ליצור מחדש" disabled={Boolean(characterBlock) || isStyling} onConfirm={() => void stylizePhoto(false)} /> : <button className="wide-button" disabled={Boolean(characterBlock) || isStyling} onClick={() => void stylizePhoto(false)}><FaceIcon />{isStyling ? "יוצרים…" : "יצירת דמות מאסטר"}</button>}
           <ConfirmAction className="wide-button accent" icon={<MagicWandIcon />} label={isStyling ? "מכינים ערכה…" : "התאמה לכל החדרים"} question={`${game.aiCharacter ? "3" : "4"} בקשות בתשלום. אחרי יצירת המאסטר, עד ${providerConcurrency[ai.imageProvider].image} חדרים ייווצרו במקביל. להמשיך?`} confirmLabel="ליצור" disabled={Boolean(characterBlock) || isStyling} onConfirm={() => void stylizePhoto(true)} />
           {characterBlock ? <div className="blocked-note">{characterBlock}</div> : null}
           {aiErrorFor("character")}
@@ -1785,15 +1888,20 @@ export default function Prototype() {
             <div className="motion-grid">{(Object.entries(motionMeta) as Array<[CompanionMotion,(typeof motionMeta)[CompanionMotion]]>).map(([motion, meta]) => { const ready = Boolean(game.sceneAnimationSlots[game.theme]?.[motion]); const failed = game.animationAssets[game.theme]?.[motion]?.status === "failed"; return <button key={motion} className={`${selectedMotion === motion ? "selected" : ""} ${ready ? "ready" : ""} ${failed ? "failed" : ""}`} onClick={() => { setSelectedMotion(motion); if (clipUrls[motion]) playMotion(motion, 5200, motion === "sleep"); }}><span>{ready ? <CheckIcon /> : <PlayIcon />}</span><strong>{meta.title}</strong><small>{failed ? "נכשל · אפשר לנסות שוב" : ready ? "מוכן בחדר הזה" : meta.note}</small></button>; })}</div>
             {clipUrls[selectedMotion] ? <video className="motion-preview" controls muted playsInline loop={selectedMotion === "idle" || selectedMotion === "sleep"} src={clipUrls[selectedMotion]} /> : null}
             {progressRow(Boolean(isAnimating) || Boolean(packProgress))}
-            {!game.animationSample ? <button className="wide-button accent" disabled={Boolean(motionBlock) || !!isAnimating || !allScenesApproved} onClick={() => void generateCharacterAnimation(selectedMotion, true)}><PlayIcon />יצירת סרטון ניסיון · {motionMeta[selectedMotion].title}</button> : !game.animationSample.approved ? <button className="wide-button accent" disabled={!clipUrls[game.animationSample.motion] && !mockAi} onClick={() => setGame((current) => ({ ...current, animationSample: current.animationSample ? { ...current.animationSample, approved: true } : undefined }))}><CheckIcon />אישור סרטון הניסיון</button> : <div className="sample-approved"><CheckIcon /><span>סרטון הניסיון אושר · אפשר להשלים את החבילה</span></div>}
+            {!game.animationSample ? <ConfirmAction className="wide-button accent" icon={<PlayIcon />} label={`יצירת סרטון ניסיון · ${motionMeta[selectedMotion].title}`} question={`סרטון אחד בתשלום${estimatedClipCredits === null ? "" : ` · אומדן ${estimatedClipCredits} קרדיטים`}. יוצרים רק את הניסיון לפני החבילה.`} confirmLabel="ליצור ניסיון" disabled={Boolean(motionBlock) || !!isAnimating || !allScenesApproved} onConfirm={() => void generateCharacterAnimation(selectedMotion, true)} /> : !game.animationSample.approved ? <div className="sample-review-actions">
+              <button className="wide-button accent" disabled={!clipUrls[game.animationSample.motion] && !mockAi} onClick={() => setGame((current) => ({ ...current, animationSample: current.animationSample ? { ...current.animationSample, approved: true } : undefined }))}><CheckIcon />אישור סרטון הניסיון</button>
+              <ConfirmAction className="wide-button" icon={<ReloadIcon />} label="לא מתאים — ליצור מחדש" question={`סרטון נוסף בתשלום${estimatedClipCredits === null ? "" : ` · אומדן ${estimatedClipCredits} קרדיטים`}. הסרטון הקיים יישאר עד שהחדש מוכן.`} confirmLabel="ליצור מחדש" disabled={!!isAnimating || Boolean(motionBlock)} onConfirm={() => void generateCharacterAnimation(game.animationSample!.motion, true)} />
+              <ConfirmAction className="wide-button danger" icon={<TrashIcon />} label="מחיקת סרטון הניסיון" question="הסרטון יימחק מהמכשיר ותוכלו לבחור פעולה אחרת לניסיון." confirmLabel="מחיקה" disabled={!!isAnimating} onConfirm={() => void deleteAnimationAsset(game.animationSample!.theme, game.animationSample!.motion)} />
+            </div> : <div className="sample-approved"><CheckIcon /><span>סרטון הניסיון אושר · אפשר להשלים את החבילה</span></div>}
             {game.animationSample?.approved ? <ConfirmAction className="wide-button accent" icon={<StackIcon />} label={remainingAnimationCount ? `יצירת יתר החבילה · ${remainingAnimationCount} סרטונים` : "כל החבילה מוכנה"} question={`${remainingAnimationCount} סרטונים${estimatedRemainingCredits === null ? "" : ` · אומדן ${estimatedRemainingCredits} קרדיטים`}. עד ${Math.min(remainingAnimationCount, providerConcurrency[ai.videoProvider].video)} ייווצרו במקביל; הצלחות נשמרות גם אם פריט אחר נכשל.`} confirmLabel="להתחיל" disabled={!remainingAnimationCount || !!isAnimating || Boolean(motionBlock)} onConfirm={() => void generateAnimationPack()} /> : null}
-            {game.animationSample?.approved ? <button className="wide-button" disabled={Boolean(motionBlock) || !!isAnimating} onClick={() => void generateCharacterAnimation(selectedMotion)}><PlayIcon />{game.sceneAnimationSlots[game.theme]?.[selectedMotion] ? `יצירה מחדש: ${motionMeta[selectedMotion].title}` : `יצירת ${motionMeta[selectedMotion].title} בחדר הזה`}</button> : null}
+            {game.animationSample?.approved ? <div className="asset-control-row"><ConfirmAction className="wide-button" icon={game.sceneAnimationSlots[game.theme]?.[selectedMotion] ? <ReloadIcon /> : <PlayIcon />} label={game.sceneAnimationSlots[game.theme]?.[selectedMotion] ? `יצירה מחדש: ${motionMeta[selectedMotion].title}` : `יצירת ${motionMeta[selectedMotion].title} בחדר הזה`} question={`סרטון אחד בתשלום${estimatedClipCredits === null ? "" : ` · אומדן ${estimatedClipCredits} קרדיטים`}.${game.sceneAnimationSlots[game.theme]?.[selectedMotion] ? " הסרטון הקיים יישאר עד שהחדש מוכן." : ""}`} confirmLabel="ליצור" disabled={Boolean(motionBlock) || !!isAnimating} onConfirm={() => void generateCharacterAnimation(selectedMotion)} />{game.sceneAnimationSlots[game.theme]?.[selectedMotion] ? <ConfirmAction className="wide-button danger" icon={<TrashIcon />} label={`מחיקת ${motionMeta[selectedMotion].title}`} question="הסרטון המקומי יימחק. תמונת החדר תישאר ותאפשר יצירה חוזרת בעתיד." confirmLabel="מחיקה" disabled={!!isAnimating} onConfirm={() => void deleteAnimationAsset(game.theme, selectedMotion)} /> : null}</div> : null}
             {!allScenesApproved ? <div className="blocked-note">צריך לבדוק ולאשר את כל שלוש תמונות החדרים לפני חיוב על וידאו ({approvedSceneCount}/3 אושרו).</div> : motionBlock ? <div className="blocked-note">{motionBlock}</div> : null}
             {aiErrorFor("motion")}
             <div className="usage-card"><span>נכסים מוכנים</span><strong>{readyAnimationCount}/{totalAnimationCount}</strong><small>{game.aiUsage.imageCredits || game.aiUsage.videoCredits ? `נמדדו ב־KIE: תמונות ${game.aiUsage.imageCredits.toFixed(2)} · וידאו ${game.aiUsage.videoCredits.toFixed(2)} קרדיטים` : estimatedClipCredits === null ? "הספק לא חושף אומדן קרדיטים אחיד" : `אומדן לסרטון: ${estimatedClipCredits} קרדיטים`}</small></div>
             <div className="small-note">כל פעולה היא וידאו מלא של החדר באיכות החסכונית של המודל. ב־KIE ברירת המחדל היא MiniMax H3 ב־768p. תמונות השינה מוכנות תחילה במקביל, ואז הסרטונים רצים בתור מוגבל לפי הספק.</div>
           </> : null}</article>
           {mediaHasVideo ? <article className="ai-feature-card compact-feature"><div className="ai-section-title"><MoonIcon /><div><strong>חלום וידאו</strong><span>קטע חגיגי לצפייה, בנפרד מלולאות הטיפול.</span></div></div>{progressRow(isDreaming)}<button className="wide-button" disabled={Boolean(dreamBlock) || isDreaming} onClick={() => void generateDream()}><MoonIcon />{isDreaming ? "יוצרים חלום…" : "יצירת חלום"}</button>{dreamBlock ? <div className="blocked-note">{dreamBlock}</div> : null}{aiErrorFor("dream")}{videoUrl ? <video className="dream-video" controls playsInline src={videoUrl} /> : null}</article> : null}
+          <article className="ai-feature-card compact-feature asset-library"><div className="ai-section-title"><TrashIcon /><div><strong>ניהול התוצרים המקומיים</strong><span>מחיקה אינה מאפסת משחק, תמונת מקור או מפתחות ספקים.</span></div></div><ConfirmAction className="wide-button danger" icon={<TrashIcon />} label="מחיקת כל תוצרי ה־AI" question="למחוק מהמכשיר את המאסטר, תמונות החדרים, השדרוגים וכל הסרטונים? ההתקדמות, תמונת המקור והמפתחות יישארו." confirmLabel="מחיקת הכול" disabled={isStyling || isDecorating || isDreaming || Boolean(isAnimating)} onConfirm={() => void clearAllAiAssets()} /></article>
           <details className="advanced-ai"><summary>מודלים והגדרות מתקדמות</summary><div><label>מודל שפה · {mediaProviderMeta[ai.provider as MediaProvider].title}</label><KeyboardInput id="text-model" className="text-field ltr" value={ai.textModel} onChange={(event) => setAi((current) => ({ ...current, textModel: event.target.value }))} /><label>מודל קול · {mediaProviderMeta[ai.voiceProvider].title}</label>{voiceModels.length > 1 ? <select aria-label="מודל קול" className="text-field ltr" value={ai.voiceModel} onChange={(event) => setAi((current) => ({ ...current, voiceModel: event.target.value }))}>{voiceModels.map((model) => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}</select> : <KeyboardInput aria-label="מודל קול" className="text-field ltr" value={ai.voiceModel} onChange={(event) => setAi((current) => ({ ...current, voiceModel: event.target.value }))} />}<label>מודל תמונה · {mediaProviderMeta[ai.imageProvider].title}</label>{imageModels.length > 1 ? <select aria-label="מודל תמונה" className="text-field ltr" value={ai.imageModel} onChange={(event) => setAi((current) => ({ ...current, imageModel: event.target.value }))}>{imageModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select> : <KeyboardInput aria-label="מודל תמונה" className="text-field ltr" value={ai.imageModel} onChange={(event) => setAi((current) => ({ ...current, imageModel: event.target.value }))} />}<label>מודל וידאו · {mediaProviderMeta[ai.videoProvider].title}</label>{videoModels.length > 1 ? <select aria-label="מודל וידאו" className="text-field ltr" value={ai.videoModel} onChange={(event) => setAi((current) => ({ ...current, videoModel: event.target.value }))}>{videoModels.map((model) => <option value={model.id} key={model.id}>{model.name || model.id}</option>)}</select> : <KeyboardInput aria-label="מודל וידאו" className="text-field ltr" value={ai.videoModel} onChange={(event) => setAi((current) => ({ ...current, videoModel: event.target.value }))} />}<small className="small-note">מזהי ברירת המחדל נבחרו לפי תיעוד הספקים. שינוי ידני מיועד למודל בעל אותה סכמת API.</small></div></details>
           {aiErrorFor("general")}
         </div></FullPage> : null}
@@ -2022,7 +2130,7 @@ function ConfirmAction({ className, icon, label, question, confirmLabel, disable
     return () => window.clearTimeout(timer);
   }, [armed]);
   if (!armed) return <button className={className} disabled={disabled} onClick={() => setArmed(true)}>{icon}{label}</button>;
-  return <><div className="blocked-note">{question}</div><div className="confirm-row"><button className="danger-solid" onClick={() => { setArmed(false); onConfirm(); }}>{confirmLabel}</button><button className="wide-button" onClick={() => setArmed(false)}>ביטול</button></div></>;
+  return <><div className="blocked-note">{question}</div><div className="confirm-row"><button className={className.split(/\s+/).includes("danger") ? "danger-solid" : "accent-solid"} onClick={() => { setArmed(false); onConfirm(); }}>{confirmLabel}</button><button className="wide-button" onClick={() => setArmed(false)}>ביטול</button></div></>;
 }
 
 function Onboarding({ game, isImporting, onKind, onName, onTheme, onPhoto, onDone }: any) {

@@ -1,4 +1,4 @@
-import type { CharacterKind, CompanionMotion } from "./gameEngine";
+import type { CharacterKind, CompanionMotion, ThemeId } from "./gameEngine";
 
 export const motionMeta: Record<CompanionMotion, { title: string; note: string; duration: number }> = {
   idle: { title: "חי בחדר", note: "מצמוץ, מבט סביב ותנועה טבעית", duration: 5 },
@@ -11,9 +11,9 @@ export const motionMeta: Record<CompanionMotion, { title: string; note: string; 
 export const animationPackMotions: CompanionMotion[] = ["idle", "eat", "play", "sleep", "celebrate"];
 
 const kindDescription: Record<Exclude<CharacterKind, "">, string> = {
-  person: "the same stylized person",
-  baby: "the same stylized baby",
-  pet: "the same stylized pet",
+  person: "the exact same person",
+  baby: "the exact same baby",
+  pet: "the exact same pet",
 };
 
 const kindGuardrail: Record<Exclude<CharacterKind, "">, string> = {
@@ -30,16 +30,21 @@ const motionDirection: Record<CompanionMotion, string> = {
   celebrate: "They notice a small burst of warm stars, celebrate with one charming victory move, then return to the exact starting pose.",
 };
 
-export function buildAnimationPrompt(kind: CharacterKind, name: string, motion: CompanionMotion) {
+const sourceStyleGuardrail = (theme?: ThemeId) => theme === "classic"
+  ? "The reference frame's monochrome green pixel rendering is intentional. Preserve its exact pixel-art palette, shapes, detail level, lighting, and character design; do not make it realistic, smoother, more detailed, or visually different."
+  : "The reference frame is the final approved design. Do not restyle, beautify, redraw, re-render, reinterpret, or add a cinematic, cartoon, 3D, anime, realistic, or other visual treatment. Preserve its exact rendering, palette, texture, lighting, and character design frame to frame.";
+
+export function buildAnimationPrompt(kind: CharacterKind, name: string, motion: CompanionMotion, theme?: ThemeId) {
   const safeKind = kind || "person";
   return [
-    "Single-shot seamless full-scene virtual-companion game loop from the approved reference frame.",
-    `${kindDescription[safeKind]} in the reference scene is ${name || "the companion"}. Preserve identity, age, face, hair or fur, outfit, colors, body proportions, exact room position, contact surface, lighting, and art style.`,
+    "Single-shot seamless full-scene motion loop made strictly from the approved reference frame.",
+    `${kindDescription[safeKind]} in the reference scene is ${name || "the companion"}. Treat every visible character feature as locked source material: preserve identity, age, face, expression design, hair or fur, outfit, colors, markings, body proportions, silhouette, exact room position, contact surface, and lighting. Change only the movement required below.`,
     kindGuardrail[safeKind],
+    sourceStyleGuardrail(theme),
     motionDirection[motion],
     "Keep the camera and every room object completely locked. Animate only the companion and an action prop when the requested motion requires one. The body stays physically grounded on the same rug, cushion, bed, or floor surface for the whole motion.",
-    "No camera movement, cuts, zoom, sliding, floating, morphing, extra limbs, duplicate subject, text, logo, UI, or watermark.",
-    "Family-friendly, warm, lightly comedic, smooth readable motion, seamless game-loop timing. No dialogue and no generated audio.",
+    "No camera movement, cuts, zoom, sliding, floating, morphing, face drift, costume change, color shift, extra limbs, duplicate subject, text, logo, UI, or watermark.",
+    "Use smooth readable motion and seamless game-loop timing without changing the source image's visual treatment. No dialogue and no generated audio.",
   ].join(" ");
 }
 
@@ -49,6 +54,7 @@ export function buildAnimationRequest(input: {
   kind: CharacterKind;
   name: string;
   motion: CompanionMotion;
+  theme?: ThemeId;
   resolution?: string;
   supportedResolutions?: string[];
   supportedFrameImages?: string[];
@@ -66,7 +72,7 @@ export function buildAnimationRequest(input: {
   });
   return {
     model: input.model,
-    prompt: buildAnimationPrompt(input.kind, input.name, input.motion),
+    prompt: buildAnimationPrompt(input.kind, input.name, input.motion, input.theme),
     duration: motionMeta[input.motion].duration,
     aspect_ratio: "9:16",
     resolution: efficientResolution,
