@@ -12,6 +12,17 @@ export type AnimationAssetRecord = {
   error?: string;
 };
 export type AnimationSample = { theme: ThemeId; motion: CompanionMotion; approved: boolean };
+export type AiAssetHistoryItem = {
+  id: string;
+  kind: "master" | "scene" | "video";
+  storageKey: string;
+  createdAt: number;
+  provider: string;
+  model: string;
+  theme?: ThemeId;
+  motion?: CompanionMotion;
+  roomSet?: string;
+};
 export type NeedKey = "fullness" | "energy" | "hygiene" | "mood";
 export type StageId = "baby" | "kid" | "teen" | "grown" | "mentor" | "legend";
 export type PersonalityId = "curious" | "cozy" | "comic";
@@ -72,6 +83,7 @@ export type GameState = {
   sceneAnimationSlots: Partial<Record<ThemeId, Partial<Record<CompanionMotion, boolean>>>>;
   animationAssets: Partial<Record<ThemeId, Partial<Record<CompanionMotion, AnimationAssetRecord>>>>;
   animationSample?: AnimationSample;
+  aiAssetHistory: AiAssetHistoryItem[];
   aiUsage: { imageCredits: number; videoCredits: number };
   notificationsEnabled: boolean;
   guideSeen: boolean;
@@ -121,7 +133,7 @@ export function createDefaultState(now = Date.now()): GameState {
     inventory: { apple: 3, meal: 1, soap: 2, medicine: 1, ball: 1 },
     streak: 1, bestStreak: 1, lastVisitKey: dayKey, nextMessAt: now + 5.5 * HOUR,
     sleepingUntil: 0, awayMinutes: 0, memories: [], visualRevision: 1, animationSlots: {},
-    aiCharacter: false, characterVariants: {}, aiRooms: {}, aiScenes: {}, aiSceneApprovals: {}, aiStateScenes: {}, sceneAnimationSlots: {}, animationAssets: {}, aiUsage: { imageCredits: 0, videoCredits: 0 },
+    aiCharacter: false, characterVariants: {}, aiRooms: {}, aiScenes: {}, aiSceneApprovals: {}, aiStateScenes: {}, sceneAnimationSlots: {}, animationAssets: {}, aiAssetHistory: [], aiUsage: { imageCredits: 0, videoCredits: 0 },
     notificationsEnabled: false, guideSeen: false,
     decorations: {}, claimedMilestones: [],
   };

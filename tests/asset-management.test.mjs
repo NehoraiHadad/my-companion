@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clearAiAssetState, removeAnimationAssetState, removeSceneAssetState } from "../src/assetManagement.ts";
+import { addAiAssetHistoryItem, clearAiAssetState, removeAiAssetHistoryItem, removeAnimationAssetState, removeSceneAssetState } from "../src/assetManagement.ts";
 import { createDefaultState } from "../src/gameEngine.ts";
 
 function stateWithAssets() {
@@ -18,6 +18,7 @@ function stateWithAssets() {
     sceneAnimationSlots: { sunrise: { idle: true, sleep: true }, midnight: { idle: true } },
     animationAssets: { sunrise: { idle: { provider: "kie", model: "h3", status: "ready" }, sleep: { provider: "kie", model: "h3", status: "ready" } } },
     animationSample: { theme: "sunrise", motion: "idle", approved: false },
+    aiAssetHistory: [{ id: "old", kind: "video", storageKey: "history:old", createdAt: 1, provider: "kie", model: "h3", theme: "sunrise", motion: "idle" }],
     aiUsage: { imageCredits: 18, videoCredits: 48 },
   };
 }
@@ -45,8 +46,18 @@ test("clearing AI assets preserves the game, source photo, keys-independent usag
   assert.equal(next.aiCharacter, false);
   assert.deepEqual(next.aiScenes, {});
   assert.deepEqual(next.sceneAnimationSlots, {});
+  assert.deepEqual(next.aiAssetHistory, []);
   assert.equal(next.sourcePhoto, state.sourcePhoto);
   assert.equal(next.photo, state.photo);
   assert.equal(next.xp, 140);
   assert.deepEqual(next.aiUsage, { imageCredits: 18, videoCredits: 48 });
+});
+
+test("asset history can add and permanently remove one retained version", () => {
+  const state = stateWithAssets();
+  const item = { id: "new", kind: "scene", storageKey: "history:new", createdAt: 2, provider: "kie", model: "image", theme: "midnight", roomSet: "base" };
+  const added = addAiAssetHistoryItem(state, item);
+  assert.equal(added.aiAssetHistory[0].id, "new");
+  const removed = removeAiAssetHistoryItem(added, "old");
+  assert.deepEqual(removed.aiAssetHistory.map((entry) => entry.id), ["new"]);
 });

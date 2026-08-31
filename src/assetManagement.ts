@@ -1,4 +1,4 @@
-import type { CompanionMotion, GameState, ThemeId } from "./gameEngine";
+import type { AiAssetHistoryItem, CompanionMotion, GameState, ThemeId } from "./gameEngine";
 
 function withoutKey<T>(record: Partial<Record<string, T>>, key: string) {
   const next = { ...record };
@@ -42,5 +42,14 @@ export function clearAiAssetState(state: GameState): GameState {
     sceneAnimationSlots: {},
     animationAssets: {},
     animationSample: undefined,
+    aiAssetHistory: [],
   };
+}
+
+export function addAiAssetHistoryItem(state: GameState, item: AiAssetHistoryItem): GameState {
+  return { ...state, aiAssetHistory: [item, ...(state.aiAssetHistory ?? []).filter((entry) => entry.id !== item.id)] };
+}
+
+export function removeAiAssetHistoryItem(state: GameState, id: string): GameState {
+  return { ...state, aiAssetHistory: (state.aiAssetHistory ?? []).filter((item) => item.id !== id) };
 }

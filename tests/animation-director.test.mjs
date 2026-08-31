@@ -5,11 +5,14 @@ import { animationPackMotions, animationStorageKey, buildAnimationPrompt, buildA
 test("animation prompt preserves the selected subject kind and creates a loop", () => {
   const prompt = buildAnimationPrompt("baby", "נועה", "play");
   assert.match(prompt, /exact same baby/);
-  assert.match(prompt, /return to the exact starting pose/);
-  assert.match(prompt, /No camera movement/);
+  assert.match(prompt, /staying planted in the exact same position/);
+  assert.match(prompt, /camera movement/);
   assert.match(prompt, /no generated audio/);
   assert.match(prompt, /Do not restyle, beautify, redraw, re-render, reinterpret/);
   assert.match(prompt, /face drift, costume change, color shift/);
+  assert.match(prompt, /Never turn a hand or paw into a lamp/);
+  assert.match(prompt, /No new object may appear/);
+  assert.doesNotMatch(prompt, /spin once|floating light|burst of warm stars/);
 });
 
 test("animation prompts keep people, babies, and pets visually distinct", () => {
@@ -25,7 +28,7 @@ test("animation prompts keep people, babies, and pets visually distinct", () => 
   assert.match(pet, /exact animal species and natural anatomy/);
 });
 
-test("video requests prefer an efficient supported resolution and close loops when possible", () => {
+test("video requests prefer an efficient supported resolution without forcing an identical last frame", () => {
   const request = buildAnimationRequest({ model: "minimax/hailuo-3", photoDataUrl: "data:image/webp;base64,abc", kind: "pet", name: "פיץ", motion: "idle", theme: "midnight", supportedResolutions: ["2K", "768p"], supportedFrameImages: ["first_frame", "last_frame"] });
   assert.equal(request.model, "minimax/hailuo-3");
   assert.equal(request.aspect_ratio, "9:16");
@@ -33,8 +36,7 @@ test("video requests prefer an efficient supported resolution and close loops wh
   assert.equal(request.generate_audio, false);
   assert.equal(request.frame_images[0].frame_type, "first_frame");
   assert.equal(request.frame_images[0].image_url.url, "data:image/webp;base64,abc");
-  assert.equal(request.frame_images[1].frame_type, "last_frame");
-  assert.equal(request.frame_images[1].image_url.url, "data:image/webp;base64,abc");
+  assert.equal(request.frame_images.length, 1);
   assert.match(request.prompt, /final approved design/);
 });
 
@@ -58,5 +60,5 @@ test("the room pack contains every gameplay motion and sleep is a stable persist
   const sleep = buildAnimationPrompt("baby", "נועה", "sleep");
   assert.match(sleep, /already asleep in the reference scene/);
   assert.match(sleep, /return exactly to the starting sleeping pose/);
-  assert.match(sleep, /Animate only the companion/);
+  assert.match(sleep, /Animate only the minimum required part of the companion/);
 });

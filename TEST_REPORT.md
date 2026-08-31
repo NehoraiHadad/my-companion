@@ -1,40 +1,50 @@
-# My Companion v5.9.0 — verification report
+# My Companion v5.10.0 — verification report
 
 Date: 2026-08-31
 
 ## Result
 
 - TypeScript production type-check: passed.
-- Game and provider tests: 78/78 passed.
+- Game and provider tests: 82/82 passed.
 - Android packaging and encrypted-storage regression tests: 5/5 passed.
 - Sites/static-host tests: 4/4 passed.
 - Protected mobile runtime integrity: 28 files passed.
-- Production web build: passed (521 modules).
+- Production web build: passed (522 modules).
 - Android packaging and signing: passed.
 - APK ZIP integrity: passed with no compressed-data errors.
 - APK packaging verification: passed in Nitron's final verification stage.
-- Output: `deliverables/My-Companion-v5.9.0.apk` (4,672,734 bytes).
-- SHA-256: `b236239a9cdfa02e19515b29422f1058499e75f83f0ef7458ccafb061efba5d5`.
+- Output: `deliverables/My-Companion-v5.10.0.apk` (4,676,830 bytes).
+- SHA-256: `9da750d42a36c5630f4be97cd22750a2d224638ca43683f9a64d1c0a39dc6e24`.
 
-## Local AI asset controls
+## Local AI gallery and asset controls
 
-- An unapproved sample video can be approved, regenerated, or deleted. Regeneration states the estimated paid cost and keeps the previous sample available until the replacement is saved.
-- Every approved room scene can be regenerated or deleted. Deleting a scene also removes only that room's dependent sleep still and motion clips so stale media cannot reappear.
-- Every generated room-motion clip can be regenerated or deleted independently without deleting its room scene or sibling motions.
-- A separate confirmed action clears all locally generated masters, variants, room scenes, sleep stills, and clips while preserving game progress, the imported source photo, provider keys, and historical usage totals.
-- Pure state tests verify targeted deletion boundaries and preservation of unrelated state. Cloud mobile-browser QA verified the clear-all control and its explicit confirmation prompt.
+- Regenerating or removing a master, room scene, or room-motion clip first archives the current blob in IndexedDB with provider, model, room, motion, and timestamp metadata.
+- The local history carousel previews retained image/video attempts, restores any version without a provider request, and offers a separate confirmed permanent deletion.
+- Restoring a room scene invalidates only active videos that depend on the replaced scene; those active videos are archived first. Replacing the source photo intentionally clears old-identity history.
+- The clear-all action explicitly includes the gallery. Game progress, source photo, provider keys, and historical usage totals remain preserved.
+- Pure state tests verify history insertion/removal, targeted deletion boundaries, and preservation of unrelated state.
 
 ## Source-locked video direction
 
-- The video prompt now treats the approved room scene as final locked source material and requests only the required movement.
+- The video prompt now treats the approved room scene as final locked source material and requests only low-amplitude movement.
 - It explicitly prohibits restyling, beautifying, redrawing, re-rendering, cinematic/cartoon/3D/anime/realistic reinterpretation, face drift, costume changes, and color shifts.
 - The classic room uses a dedicated guardrail that preserves the reference frame's monochrome green pixel palette, shapes, detail level, lighting, and character design instead of making it smoother or realistic.
-- Request tests verify both the ordinary source-lock and the classic-room pixel guardrail.
+- It locks limb count and attachment points, prohibits limb-object fusion and invented props, and tells the model that stability is more important than dramatic movement.
+- H3 and OpenRouter video requests now send only a first frame. The earlier identical first/last-frame strategy was removed because it can force a visible morph while the model tries to close the loop.
+- Request tests verify the ordinary source-lock, anatomy lock, no-prop rule, single-frame input, and classic-room pixel guardrail.
+
+## KIE background resume, text, and Hebrew voice
+
+- Every KIE media request stores its `taskId`, stable resume key, model, creation time, and completed result URL in local storage until the media blob is downloaded and saved.
+- Polling pauses while the document is hidden or the device is offline. Transient `Failed to fetch` errors keep the job queued; returning to the same creation reuses the existing paid job rather than sending a duplicate.
+- KIE GPT text sends the documented structured Responses input and parses both JSON and `text/event-stream` output, including output-text deltas.
+- KIE Hebrew speech defaults to `elevenlabs/text-to-dialogue-v3` and uses its dialogue-array schema. A manually selected Multilingual v2 model is rejected locally for Hebrew before charging.
+- Unit tests cover persisted task IDs/result URLs, JSON/SSE parsing, the v3 voice schema, and Hebrew capability guards.
 
 ## MiniMax H3 768P default
 
 - KIE video now defaults to `minimax-h3/image-to-video`; an existing saved KIE setup that still uses the previous Seedance Mini default is migrated once without adding a new ordinary-user setting.
-- The H3 image-to-video request explicitly sends `resolution: "768P"`, the approved room scene as both first and last frame, and a six-second duration for the five-second gameplay-loop slot.
+- The H3 image-to-video request explicitly sends `resolution: "768P"`, the approved room scene as the first frame only, and a six-second duration for the five-second gameplay-loop slot.
 - The published KIE estimate is now 8 credits per generated second at 768P, so the UI displays 48 credits for one gameplay clip and scales the pack estimate from that value.
 - Browser QA confirmed that selecting KIE for video chooses the H3 model and displays the 48-credit estimate while leaving resolution out of the ordinary controls.
 
@@ -70,7 +80,7 @@ Date: 2026-08-31
 - The production path uses complete room-scene MP4 clips. It does not remove the background or composite a transparent character over the room.
 - A room edit or regenerated scene invalidates the previous room clips so an old background cannot reappear during an action.
 - OpenRouter prefers 1K, 768p, or 720p over 2K when the selected model advertises those resolutions. KIE and fal.ai adapters use their documented lower-cost resolution controls where available.
-- The same reference is sent as the first and last frame when a provider/model exposes last-frame control, improving loop closure.
+- Only the approved first frame is sent. Playback may loop with a small boundary cut, but this avoids asking the model to morph back into an identical last frame and prioritizes anatomical stability.
 - Single KIE image and video jobs measure account credits before and after a successful task. Concurrent batches instead measure one aggregate deduction per non-overlapping image or video phase. Known KIE video models also show a preflight estimate; providers without a stable credit rate remain explicitly unknown.
 
 ## Live KIE smoke test
@@ -101,6 +111,6 @@ Generated images and videos are downloaded immediately into local IndexedDB. Use
 
 ## Test boundary
 
-The earlier live paid test covered KIE GPT Image 2 and MiniMax H3 only. No additional paid requests were made for v5.9.0; the 768P field, preset migration, 48-credit estimate, bounded concurrency, retry behavior, aggregate accounting, encrypted-key persistence, source-locked prompts, and asset-management controls were verified through type-checking, unit tests, storage-contract tests, production packaging inspection, browser QA, and the secure HTTPS origin used by the Android WebView. The approval, replacement, deletion, sample, pack, sleep-state, resume, migration, and UI paths remain covered by unit tests and mock flows. Other provider paths were verified through their request builders, response parsers, polling state handling, and documented queue limits.
+The earlier live paid test covered KIE GPT Image 2 and MiniMax H3 only. No additional paid requests were made for v5.10.0; the new prompt, single-frame request, background resume, gallery, KIE text parser, and Hebrew voice adapter were verified without consuming credits through type-checking, unit tests, storage-contract tests, production packaging inspection, browser QA, and the secure HTTPS origin used by the Android WebView. Other provider paths were verified through their request builders, response parsers, polling state handling, and documented queue limits.
 
 Native-mode behavior is covered by Android preparation tests and inspection of the packaged HTML, which contains the `native-apk` marker and therefore hides simulator chrome. The generic Vite warning for a JavaScript chunk larger than 500 kB remains and does not block packaging.

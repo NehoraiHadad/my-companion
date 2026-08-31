@@ -27,3 +27,25 @@ export function extractAiResponseText(provider: AiProvider, data: any): string {
   if (data?.output_text) return String(data.output_text);
   return String(data?.output?.flatMap((entry: any) => entry.content ?? []).map((entry: any) => entry.text ?? "").join("") || "");
 }
+
+export function extractKieResponseText(raw: string): string {
+  const parsePayload = (value: string) => {
+    try { return JSON.parse(value); } catch { return null; }
+  };
+  const direct = parsePayload(raw);
+  if (direct) return extractAiResponseText("openai", direct);
+
+  const deltas: string[] = [];
+  let completed = "";
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const value = line.slice(5).trim();
+    if (!value || value === "[DONE]") continue;
+    const payload = parsePayload(value);
+    if (!payload) continue;
+    if (typeof payload.delta === "string" && String(payload.type || "").includes("output_text")) deltas.push(payload.delta);
+    const full = extractAiResponseText("openai", payload.response ?? payload);
+    if (full) completed = full;
+  }
+  return completed || deltas.join("");
+}

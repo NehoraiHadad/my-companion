@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractAiResponseText, parseAiEvent } from "../src/aiGame.ts";
+import { extractAiResponseText, extractKieResponseText, parseAiEvent } from "../src/aiGame.ts";
 
 test("OpenAI Responses output is extracted and validated", () => {
   const raw = extractAiResponseText("openai", { output_text: JSON.stringify({ dialogue: "מצאתי כוכב בכיס!", emotion: "happy", animation: "glow", memory: "כוכב בכיס", bonus: 3 }) });
@@ -16,6 +16,17 @@ test("OpenRouter chat output is extracted and validated", () => {
   const event = parseAiEvent(raw);
   assert.equal(event.dialogue, "בוא נשחק");
   assert.equal(event.memory, "הצעה למשחק");
+});
+
+test("KIE responses are extracted from JSON and SSE responses", () => {
+  const payload = { output: [{ content: [{ type: "output_text", text: '{"dialogue":"שלום"}' }] }] };
+  assert.equal(extractKieResponseText(JSON.stringify(payload)), '{"dialogue":"שלום"}');
+  const stream = [
+    'data: {"type":"response.output_text.delta","delta":"{\\"dialogue\\":\\""}',
+    'data: {"type":"response.output_text.delta","delta":"הפתעה\\"}"}',
+    "data: [DONE]",
+  ].join("\n\n");
+  assert.equal(extractKieResponseText(stream), '{"dialogue":"הפתעה"}');
 });
 
 test("untrusted AI fields are bounded before entering game state", () => {

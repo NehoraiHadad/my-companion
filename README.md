@@ -2,7 +2,7 @@
 
 A local-first Android companion game inspired by the care loop of classic Tamagotchi toys, with a premium modern visual direction and a light humorous voice.
 
-## Included in v5.9.0
+## Included in v5.10.0
 
 - Four continuously time-based needs: fullness, energy, hygiene, and joy, including correct in-session decay and resume processing.
 - Feed, sleep, clean, and play actions with cross-effects and XP progression.
@@ -27,11 +27,13 @@ A local-first Android companion game inspired by the care loop of classic Tamago
 - Offline situational humor tailored to the chosen subject type, plus clearer action labels and guidance.
 - Provider-neutral scene pipeline: one canonical transparent master is placed inside each full room scene with an explicit pose, room scale, perspective, light spill, occlusion, and contact shadow instead of being layered above the background.
 - Review-gated scene-animation studio: all three complete room scenes must be approved before video, one sample clip must be reviewed before the remaining pack can run, and failed clips can be resumed individually.
-- Every generated scene and video remains manageable: the player can reject and regenerate the sample, replace or delete an individual room scene or motion, or clear all generated AI media while keeping game progress, the source photo, provider keys, and historical usage totals.
+- Every generated scene and video remains manageable: replacing or removing an individual room scene or motion archives the previous version in a local gallery, where it can be restored without another paid request or deleted permanently.
 - Paid replacements keep the existing local image or clip active until its replacement has been generated and saved successfully.
 - Five room-specific motions — idle, eat, play, sleep, and celebrate — are stored for each room. Transient actions return to the approved idle scene; sleep uses a separately generated sleeping still and a stable breathing loop.
-- Each full-scene motion locks the camera and room, uses an efficient model-supported resolution, and reuses the same first and last frame when supported. No transparent floating-character video is used in the production path.
-- Video prompts treat the approved scene as locked source material and request motion only—no restyling, redraw, cinematic treatment, face drift, costume change, or color shift. The classic room separately locks its monochrome green pixel rendering.
+- Each full-scene motion locks the camera and room, uses an efficient model-supported resolution, and sends only the approved opening frame instead of forcing an identical last frame through a morph. No transparent floating-character video is used in the production path.
+- Video prompts treat the approved scene as locked source material and request low-amplitude motion only—no invented props, limb-object fusion, extra anatomy, restyling, redraw, cinematic treatment, face drift, costume change, or color shift. The classic room separately locks its monochrome green pixel rendering.
+- KIE task IDs survive backgrounding and process restarts. Polling pauses while the app is hidden or offline, then resumes from the existing task instead of creating a second paid job.
+- KIE GPT text accepts both JSON and documented SSE responses. Hebrew KIE speech defaults to ElevenLabs v3; Multilingual v2 is blocked for Hebrew before a paid request is sent.
 - KIE single jobs record the actual deduction per asset; concurrent batches record the actual aggregate deduction once per image or video phase. The studio also shows a published-price estimate before batch generation when the selected KIE model has a known rate.
 - Documented adapters for OpenAI, OpenRouter, KIE, and fal.ai keep the product flow identical while translating it to each provider's image and video schema. KIE video now defaults to MiniMax H3 image-to-video at 768P, estimated at 48 credits for the app's six-second loop; the resolution stays implicit in the ordinary UI.
 - Optional asynchronous video dreams through the selected video route.
@@ -59,6 +61,6 @@ The Android host source, including the local HTTPS asset loader and native image
 ## Android package
 
 - Package: `app.pocketcompanion.local`
-- Version: `5.9.0`
+- Version: `5.10.0`
 - Minimum Android: API 21
 - Target Android: API 34

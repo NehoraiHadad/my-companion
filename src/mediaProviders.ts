@@ -81,7 +81,7 @@ export const defaultMediaModels: Record<MediaProvider, { image: string; video: s
 export const defaultCapabilityModels: Record<MediaProvider, { text: string; voice: string; image: string; video: string }> = {
   openai: { text: "gpt-5.6-luna", voice: "gpt-4o-mini-tts", image: "gpt-image-2", video: "sora-2" },
   openrouter: { text: "openai/gpt-5.6-luna", voice: "openai/gpt-4o-mini-tts-2025-12-15", image: "openai/gpt-image-2", video: "minimax/hailuo-3" },
-  kie: { text: "gpt-5-6-luna", voice: "elevenlabs/text-to-speech-multilingual-v2", image: "gpt-image-2-image-to-image", video: "minimax-h3/image-to-video" },
+  kie: { text: "gpt-5-6-luna", voice: "elevenlabs/text-to-dialogue-v3", image: "gpt-image-2-image-to-image", video: "minimax-h3/image-to-video" },
   fal: { text: "google/gemini-2.5-flash", voice: "fal-ai/elevenlabs/tts/multilingual-v2", image: "fal-ai/nano-banana-2/edit", video: "fal-ai/wan/v2.2-5b/image-to-video" },
 };
 
@@ -96,7 +96,6 @@ export function buildKieVideoTask(model: string, prompt: string, firstFrameUrl: 
       input: {
         prompt,
         first_frame_url: firstFrameUrl,
-        last_frame_url: firstFrameUrl,
         duration: Math.max(5, Math.min(15, duration === 5 ? 6 : duration)),
         resolution: "768P",
       },
@@ -115,6 +114,17 @@ export function buildKieVideoTask(model: string, prompt: string, firstFrameUrl: 
       web_search: false,
     },
   };
+}
+
+export function buildKieVoiceTask(model: string, text: string) {
+  if (model.includes("text-to-dialogue-v3")) {
+    return { model, input: { dialogue: [{ text, voice: "EkK5I93UQWFDigLMpZcX" }], stability: .5 } };
+  }
+  return { model, input: { text, voice: "Rachel", stability: .5, similarity_boost: .75, style: .15, speed: 1, timestamps: false } };
+}
+
+export function kieVoiceSupportsHebrew(model: string) {
+  return model.includes("text-to-dialogue-v3") || !model.includes("multilingual-v2");
 }
 
 export function estimateVideoCredits(provider: MediaProvider, model: string, duration = 5): number | null {

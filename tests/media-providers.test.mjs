@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildFalImageTask, buildFalVideoTask, buildKieImageTask, buildKieVideoTask,
+  buildFalImageTask, buildFalVideoTask, buildKieImageTask, buildKieVideoTask, buildKieVoiceTask,
   defaultCapabilityModels, parseFalAudioUrl, parseFalMediaUrl, parseFalSubmission,
   parseFalText, parseKieTask, parseKieTaskId,
-  estimateVideoCredits, isRetryableStatus, providerConcurrency, retryAfterMilliseconds,
+  estimateVideoCredits, isRetryableStatus, kieVoiceSupportsHebrew, providerConcurrency, retryAfterMilliseconds,
   retryDelayMilliseconds, runTaskPool,
 } from "../src/mediaProviders.ts";
 
@@ -16,6 +16,7 @@ test("every provider has defaults for all four capability routes", () => {
     assert.ok(defaultCapabilityModels[provider].video);
   }
   assert.equal(defaultCapabilityModels.kie.video, "minimax-h3/image-to-video");
+  assert.equal(defaultCapabilityModels.kie.voice, "elevenlabs/text-to-dialogue-v3");
 });
 
 test("KIE builders follow unified job API schemas", () => {
@@ -29,11 +30,19 @@ test("KIE builders follow unified job API schemas", () => {
   assert.equal(video.input.aspect_ratio, "9:16");
   const h3 = buildKieVideoTask("minimax-h3/image-to-video", "gentle loop", "https://a.test/frame.webp", 5);
   assert.equal(h3.input.first_frame_url, "https://a.test/frame.webp");
-  assert.equal(h3.input.last_frame_url, "https://a.test/frame.webp");
+  assert.equal(h3.input.last_frame_url, undefined);
   assert.equal(h3.input.duration, 6);
   assert.equal(h3.input.resolution, "768P");
   assert.equal(parseKieTaskId({ data: { taskId: "task-1" } }), "task-1");
   assert.deepEqual(parseKieTask({ data: { state: "success", resultJson: '{"resultUrls":["https://a.test/out.mp4"]}' } }), { state: "success", url: "https://a.test/out.mp4", error: undefined });
+});
+
+test("KIE uses ElevenLabs v3 dialogue schema for Hebrew", () => {
+  const task = buildKieVoiceTask("elevenlabs/text-to-dialogue-v3", "שלום עולם");
+  assert.equal(task.input.dialogue[0].text, "שלום עולם");
+  assert.ok(task.input.dialogue[0].voice);
+  assert.equal(kieVoiceSupportsHebrew("elevenlabs/text-to-dialogue-v3"), true);
+  assert.equal(kieVoiceSupportsHebrew("elevenlabs/text-to-speech-multilingual-v2"), false);
 });
 
 test("fal builders and queue parsers support image, video, text and voice", () => {
